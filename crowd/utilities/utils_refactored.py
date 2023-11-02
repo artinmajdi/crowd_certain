@@ -153,6 +153,7 @@ def reading_user_input_arguments(argv=None, jupyter=True, config_name='config_cr
     # Updating the config file
     return  get_config(args=get_command_line_args())
 
+
 class LoadSaveFile:
     def __init__(self, path):
         self.path = path

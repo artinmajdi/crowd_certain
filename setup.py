@@ -4,7 +4,7 @@ from setuptools import find_packages
 REQUIREMENTS = [i.strip() for i in open("requirements.txt").readlines()]
 
 setuptools.setup(
-	name="taxonomy",
+	name="crowd",
 	version="1.0.0",
 	author="Artin Majdi",
 	author_email="msm2024@gmail.com",
@@ -16,12 +16,12 @@ setuptools.setup(
 		"Operating System :: OS Independent",
 		"Topic :: Scientific/Engineering :: Medical Science Apps."
 	],
-	python_requires='>=3.7',
+	python_requires='>=3.9',
 	install_requires=REQUIREMENTS,
 	packages=find_packages(),
-	package_dir={'taxonomy': 'taxonomy'},
-	package_data={'taxonomy': ['taxonomy/config.json']},
+	package_dir={'crowd': 'crowd'},
+	package_data={'crowd': ['crowd/config.json']},
 	include_package_data=True,
 	zip_safe=False,
-	entry_points={'console_scripts': ['taxonomy = taxonomy.taxonomy:main', ]},
+	entry_points={'console_scripts': ['crowd = crowd.crowd:main', ]},
 )
