@@ -1,0 +1,19 @@
+name: crowd
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - tensorflow
+  - tensorflow-datasets
+  - tqdm
+  - wget
+  - matplotlib
+  - mlflow
+  - numpy
+  - pandas
+  - scikit-learn
+  - scipy
+  - seaborn
+  - setuptools
+  - pip:
+    - crowd-kit
