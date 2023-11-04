@@ -65,6 +65,6 @@ setup(
     package_data={'crowd_certain': ['crowd_certain/config.json']},
     include_package_data=True,
     zip_safe=False,
-    entry_points={'console_scripts': ['myutility=crowd_certain.utils:main']},
+    entry_points={'console_scripts': ['myutility=crowd_certain.main:main']},
     cmdclass={'install': CustomInstallCommand}
 )

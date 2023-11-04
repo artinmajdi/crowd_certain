@@ -11,3 +11,5 @@ tensorflow-datasets
 tqdm
 wget
 crowd-kit
+jupyter
+ipywidgets
