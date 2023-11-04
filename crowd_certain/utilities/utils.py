@@ -23,7 +23,7 @@ from scipy.special import bdtrc
 from sklearn import ensemble as sk_ensemble, metrics as sk_metrics
 from tqdm import tqdm_notebook as tqdm
 
-from main.aims.crowd import load_data_crowd as load_data
+from crowd_certain.utilities import load_data
 
 
 class Dict2Class:
