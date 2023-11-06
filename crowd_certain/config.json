@@ -1,5 +1,5 @@
 {
-  "dataset_path"     : "./datasets",
+  "dataset_path"     : "../datasets",
   "dataset_name"     : "mushroom",
   "main_url"         : "https://archive.ics.uci.edu/ml/machine-learning-databases/",
   "dataset_list"     : ["kr-vs-kp", "mushroom", "iris", "spambase", "tic-tac-toe", "sick", "waveform", "car", "vote", "ionosphere"],
@@ -10,8 +10,8 @@
   "random_state"      : 0,
 
   "__comment__outputs_mode" : "ALLOWED OPTIONS FOR BELOW ARE: [calculate, load_local, load_MLFlow]",
-  "outputs_mode"            : "load_local",
-  "outputs_path"            : "./outputs",
+  "outputs_mode"            : "calculate",
+  "outputs_path"            : "../outputs",
   "save_outputs"            : true,
   "parallel_processing"     : true,
 

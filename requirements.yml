@@ -1,14 +1,10 @@
-# name: crowd
 channels:
   - conda-forge
   - defaults
 dependencies:
-  - tensorflow
-  - tensorflow-datasets
+  - python>=3.10
   - tqdm
-  - wget
   - matplotlib
-  - mlflow
   - numpy
   - pandas
   - scikit-learn
@@ -17,5 +13,6 @@ dependencies:
   - setuptools
   - jupyter
   - ipywidgets
-  - pip:
-    - crowd-kit
+  - statsmodels
+#  - pip:
+#      - crowd-kit

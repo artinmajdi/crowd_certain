@@ -1,8 +1,9 @@
-import setuptools
-from setuptools import setup, find_packages
-from setuptools.command.install import install
-import os, sys
 import subprocess
+import sys
+
+from setuptools import find_packages, setup
+from setuptools.command.install import install
+
 
 class CustomInstallCommand(install):
     """Customized setuptools install command to use conda if available."""
@@ -23,20 +24,19 @@ class CustomInstallCommand(install):
             mamba_available = True
 
         except subprocess.CalledProcessError:
-
-            # If conda or mamba are not available, it will raise an error
             pass
 
         if conda_available:
 
             if not mamba_available:
-                # If conda is available but mamba is not, install mamba using conda
+                print('Mamba is not available. Installing mamba using conda.')
                 subprocess.check_call(['conda', 'install', '-c', 'conda-forge', 'mamba', '-y'])
 
-            # If conda is available, use it to install requirements
-            subprocess.check_call(['mamba', 'env', 'update', '--file', 'requirements.yml', '--prune'])
+            print('Installing using mamba')
+            subprocess.check_call(['mamba', 'env', 'update', '--file', 'requirements.yml'])
 
         else:
+            print('Conda is not available. Installing using pip')
             # If conda is not available, use pip to install requirements
             subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'])
 

@@ -107,13 +107,6 @@ def reading_user_input_arguments(argv=None, jupyter=True, config_name='config_cr
 
 	def get_config(args): # type: (argparse.Namespace) -> argparse.Namespace
 
-		def add_params_from_mlflow():
-			if (args.params_source == 'load_MLFlow') and mlflow_setup:
-				mlflow_params = eval(mlflow_setup.run.data.params)
-				for name in ['num_seeds', 'num_simulations', 'low_dis', 'high_dis']:
-					setattr(args, name, mlflow_params[name])
-				args.config.workers_list = mlflow_params['workers_list']
-
 		# Loading the config.json file
 		config_dir =  os.path.join(os.path.dirname(__file__), config_name if jupyter else args.config)
 
@@ -139,9 +132,6 @@ def reading_user_input_arguments(argv=None, jupyter=True, config_name='config_cr
 			args.outputs_path 			    = pathlib.Path(__file__).parent.joinpath(args.outputs_path)
 			args.MLFlow_run_name 			= f'{args.dataset_name}-{args.model_name}'
 			args.workers_list 			= list(range(*args.nlabelers_min_max))
-
-
-		add_params_from_mlflow()
 
 		return args
 

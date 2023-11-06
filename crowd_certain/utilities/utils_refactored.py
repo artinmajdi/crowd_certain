@@ -23,7 +23,7 @@ from scipy.special import bdtrc
 from sklearn import ensemble as sk_ensemble, metrics as sk_metrics
 from tqdm import tqdm_notebook as tqdm
 
-from crowd_certain import load_data
+from crowd_certain.utilities import load_data
 
 
 class Dict2Class:
@@ -45,7 +45,7 @@ def func_callBacks(dir_save='', mode='min', monitor='val_loss'):
     return [checkPointer]  # [ earlyStopping , CSVLogger]
 
 
-def reading_user_input_arguments(argv=None, jupyter=True, config_name='config_crowd.json', **kwargs) -> argparse.Namespace:
+def reading_user_input_arguments(argv=None, jupyter=True, config_name='../config.json', **kwargs) -> argparse.Namespace:
 
     class DatasetList( enum.Enum ):
         KR_VS_KP    = "kr-vs-kp"
@@ -143,8 +143,8 @@ def reading_user_input_arguments(argv=None, jupyter=True, config_name='config_cr
             args = argparse.Namespace(**updated_args)
 
             # Updating the paths to their absolute path
-            args.outputs_path = base_path / args.outputs_path
-            args.dataset_path = base_path / args.dataset_path
+            args.outputs_path = pathlib.Path(args.outputs_path).resolve()
+            args.dataset_path = pathlib.Path(args.dataset_path).resolve()
             # args.MLFlow_run_name = f'{args.dataset_name}-{args.model_name}'
             args.workers_list    = list(range(*args.nlabelers_min_max))
 

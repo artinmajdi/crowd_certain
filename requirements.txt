@@ -1,13 +1,10 @@
 matplotlib
-mlflow
 numpy
 pandas
 scikit-learn
 scipy
 seaborn
 setuptools
-tensorflow
-tensorflow-datasets
 tqdm
 wget
 crowd-kit
