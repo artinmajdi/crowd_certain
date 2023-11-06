@@ -1,5 +1,5 @@
 
-from crowd_certain.utilities import utils_refactored_new as utils
+from crowd_certain.utilities import utils
 from crowd_certain.utilities.settings import get_settings
 from crowd_certain.utilities.params import EvaluationMetricNames
 

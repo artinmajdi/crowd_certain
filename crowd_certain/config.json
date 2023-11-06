@@ -22,7 +22,7 @@
     "use_parallelization"     : true
   },
   "output": {
-    "mode": "load_local",
+    "mode": "calculate",
     "save": true,
     "path": "outputs"
   }
