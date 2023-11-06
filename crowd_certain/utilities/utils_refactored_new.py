@@ -954,7 +954,7 @@ class Aim1_3_Data_Analysis_Results:
             wwr = pd.DataFrame()
             for dt in self.config.dataset.datasetNames:
 
-                df = (self.results_all_datasets[dt.value].weight_strength_relation
+                df = (self.results_all_datasets[dt].weight_strength_relation
                         .rename(columns=self.RENAME_MAPS)
                         .melt(id_vars=['labelers_strength'], value_vars=value_vars, var_name='Method', value_name='Weight'))
 
@@ -1075,7 +1075,7 @@ class Aim1_3_Data_Analysis_Results:
         if dataframe is not None: LoadSaveFile( path / f'{filename}.xlsx' ).dump( dataframe, index=True )
 
 
-    def figure_weight_quality_relation(self, aspect=1.5, font_scale=1.8, fontsize=15, relative_path='final_figures', height=4):
+    def figure_weight_quality_relation(self, aspect=1.5, font_scale=1, fontsize=12, relative_path='final_figures', height=4):
 
         metric_name = 'weight_strength_relation'
         df: pd.DataFrame = self.get_result(metric_name=metric_name)  # type: ignore

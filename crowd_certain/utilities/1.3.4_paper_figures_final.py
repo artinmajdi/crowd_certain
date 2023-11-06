@@ -15,11 +15,9 @@ config = get_settings()
 
 aim1_3 = utils.Aim1_3_Data_Analysis_Results(config=config)
 
-# aim1_3.figure_metrics_mean_over_seeds_per_dataset_per_worker(metric=EvaluationMetricNames.ACC, nl=3, figsize=(12,10), font_scale=1.8)
+aim1_3.figure_F_heatmap( metric_name='F_eval_one_dataset_all_labelers', dataset_name='kr-vs-kp', figsize=(13,8), font_scale=2)
 
-aim1_3.figure_metrics_all_datasets_workers(figsize=(13,15), font_scale=2)
 
-# aim1_3.figure_weight_quality_relation()
 
 # cProfile.run('run()', 'profiler.txt')
 # import pstats
