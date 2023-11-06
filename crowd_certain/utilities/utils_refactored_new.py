@@ -19,10 +19,10 @@ from matplotlib import pyplot as plt
 from scipy.interpolate import make_interp_spline
 from scipy.special import bdtrc
 from sklearn import ensemble as sk_ensemble, metrics as sk_metrics
-from tqdm import tqdm_notebook as tqdm
+from tqdm import tqdm
 
 from crowd_certain.utilities import load_data
-from crowd_certain.utilities.params import DatasetNames
+from crowd_certain.utilities.params import DatasetNames, EvaluationMetricNames
 from crowd_certain.utilities.settings import Settings, OutputModes
 class LoadSaveFile:
     def __init__(self, path):
@@ -822,6 +822,7 @@ class OutputsForVisualization:
         self.findings_mean_over_seeds = None
         self.weight_strength_relation = None
 
+
     @staticmethod
     def run_for_one_dataset(config: 'Settings', dataset_name: DatasetNames=DatasetNames.IONOSPHERE) -> ClassResultsComparisons:
 
@@ -842,9 +843,11 @@ class OutputsForVisualization:
 
         return ClassResultsComparisons(weight_strength_relation=weight_strength_relation, findings_confidence_score=findings_confidence_score, outputs=outputs, config=config)
 
+
     @staticmethod
     def run_full_experiment_for_figures(config: 'Settings') -> Dict[DatasetNames, ClassResultsComparisons]:
-        return {dt: OutputsForVisualization.run_for_one_dataset(dataset_name=dt.value, config=config) for dt in config.dataset.datasetNames}
+        return {dt: OutputsForVisualization.run_for_one_dataset(dataset_name=dt, config=config) for dt in config.dataset.datasetNames}
+
 
     @staticmethod
     def get_F_stuff(outputs, config):
@@ -866,7 +869,7 @@ class OutputsForVisualization:
 
                 return df
 
-            inF     = get( 'inF' )
+            inF     = get( 'F' )
             inF_pos = get( 'P_pos' ) if strategy == 'freq' else get( 'I' )
             inF_mean_over_seeds     = inF.groupby( level=0, axis=1 ).mean()
             inF_pos_mean_over_seeds = inF_pos.groupby( level=0, axis=1 ).mean()
@@ -913,7 +916,8 @@ class Aim1_3_Data_Analysis_Results:
         self.config                 = config
         self.results_all_datasets  = OutputsForVisualization.run_full_experiment_for_figures(config=config)
 
-    def get_result(self, metric_name='F_all', dataset_name='mushroom', strategy='freq' , nl='NL3', seed_ix=0, method_name='proposed', data_mode='test'):
+
+    def get_result(self, metric_name='F_all', dataset_name: DatasetNames=DatasetNames.MUSHROOM, strategy='freq' , nl='NL3', seed_ix=0, method_name='proposed', data_mode='test'):
 
         def drop_proposed_rename_crowd_certain(df, orient='columns'):
 
@@ -929,7 +933,7 @@ class Aim1_3_Data_Analysis_Results:
             for s in range( self.config.simulation.num_seeds ):
                 df_all[s] = self.results_all_datasets[dataset_name1].outputs[n_workers][s].metrics.T.astype( float )
 
-            return df_all.groupby(level='metric', axis=1).mean()
+            return df_all.T.groupby(level='metric').mean().T
 
         if metric_name in ['F_all', 'F_pos_all', 'F_mean_over_seeds', 'F_pos_mean_over_seeds']:
 
@@ -989,15 +993,16 @@ class Aim1_3_Data_Analysis_Results:
 
                 for dt in self.config.dataset.datasetNames:
                     for nl in workers_list:
-                        df_temp = get_metrics_mean_over_seeds(dt.value, nl)
+                        df_temp = get_metrics_mean_over_seeds(dt, nl)
                         df_temp = drop_proposed_rename_crowd_certain(df_temp, orient='index')
 
                         for metric in ['ACC','AUC','F1']:
-                            df[(metric, dt, nl)] = df_temp[metric].copy()
+                            df[(metric, dt.value, nl)] = df_temp[metric].copy()
 
                 return df
 
-    def get_evaluation_metrics_for_confidence_scores(self, metric_name='F_eval_one_dataset_all_labelers', dataset_name='ionosphere', nl='NL3'):
+
+    def get_evaluation_metrics_for_confidence_scores(self, metric_name='F_eval_one_dataset_all_labelers', dataset_name: DatasetNames=DatasetNames.IONOSPHERE, nl='NL3'):
 
         from sklearn.metrics import brier_score_loss
 
@@ -1055,6 +1060,7 @@ class Aim1_3_Data_Analysis_Results:
 
         return df_cs.astype(float)
 
+
     def save_outputs(self, filename, relative_path, dataframe=None):
 
         # output path
@@ -1088,13 +1094,14 @@ class Aim1_3_Data_Analysis_Results:
         # Saving the Figure & Sheet
         self.save_outputs( filename=f'figure_{metric_name}', relative_path=relative_path, dataframe=df )
 
-    def figure_metrics_mean_over_seeds_per_dataset_per_worker(self, metric='ACC', nl=3, figsize=(10, 10), font_scale=1.8, fontsize=20, relative_path='final_figures'):
+
+    def figure_metrics_mean_over_seeds_per_dataset_per_worker(self, metric: EvaluationMetricNames=EvaluationMetricNames.ACC, nl=3, figsize=(10, 10), font_scale=1.8, fontsize=20, relative_path='final_figures'):
 
         metric_name='metrics_mean_over_seeds_per_dataset_per_worker'
 
         df = pd.DataFrame()
         for dt in self.config.dataset.datasetNames:
-            df[dt] = self.get_result( metric_name=metric_name, dataset_name=dt, nl=f'NL{nl}')[metric] # type: ignore
+            df[dt.value] = self.get_result( metric_name=metric_name, dataset_name=dt, nl=f'NL{nl}')[metric.value]
 
 
         fig = plt.figure(figsize=figsize)
@@ -1107,7 +1114,8 @@ class Aim1_3_Data_Analysis_Results:
         # Saving the Figure & Sheet
         self.save_outputs( filename=f'figure_{metric_name}_{metric}', relative_path=relative_path, dataframe=df )
 
-    def figure_metrics_all_datasets_workers(self, workers_list=['NL3', 'NL4', 'NL5'], figsize=(15, 15), font_scale=1.8, fontsize=20, relative_path='final_figures'):
+
+    def figure_metrics_all_datasets_workers(self, workers_list=['NL3', 'NL4','NL5'], figsize=(15, 15), font_scale=1.8, fontsize=20, relative_path='final_figures'):
 
         sns.set(font_scale=font_scale, palette='colorblind', style='darkgrid', context='paper')
 
@@ -1118,13 +1126,14 @@ class Aim1_3_Data_Analysis_Results:
 
         fig, axes = plt.subplots(nrows=len(workers_list), ncols=len(metrics_list), figsize=figsize, sharex=True, sharey=True, squeeze=True)
         for i2, metric in enumerate(metrics_list):
-            df_per_nl = df[metric].groupby(level=1, axis=1)
+            df_per_nl = df[metric].T.groupby(level=1)
             for i1, nl in enumerate(workers_list):
-                sns.boxplot(data=df_per_nl.get_group( nl).T, orient='h', ax=axes[i1, i2])
+                sns.boxplot(data=df_per_nl.get_group(nl), orient='h', ax=axes[i1, i2])
 
 
+        i1 = 2 if len(workers_list) > 2 else 1
         for i2, metric in enumerate(metrics_list):
-            axes[2, i2].set_xlabel(metric, fontsize=fontsize, fontweight='bold', labelpad=20)
+            axes[i1, i2].set_xlabel(metric, fontsize=fontsize, fontweight='bold', labelpad=20)
 
         for i1, nl in enumerate(workers_list):
             axes[i1, 0].set_ylabel(nl, fontsize=fontsize, fontweight='bold', labelpad=20)
@@ -1135,7 +1144,8 @@ class Aim1_3_Data_Analysis_Results:
         # Saving the Figure & Sheet
         self.save_outputs( filename=f'figure_{metric_name}', relative_path=relative_path, dataframe=df )
 
-    def figure_F_heatmap(self, metric_name='F_eval_one_dataset_all_labelers', dataset_name='ionosphere', nl='NL3', fontsize=20, font_scale=1.8, figsize=(13, 11), relative_path='final_figures'):
+
+    def figure_F_heatmap(self, metric_name='F_eval_one_dataset_all_labelers', dataset_name:DatasetNames=DatasetNames.IONOSPHERE, nl='NL3', fontsize=20, font_scale=1.8, figsize=(13, 11), relative_path='final_figures'):
 
         sns.set(font_scale=font_scale, palette='colorblind', style='darkgrid', context='paper')
 

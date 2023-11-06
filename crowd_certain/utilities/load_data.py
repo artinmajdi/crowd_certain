@@ -888,9 +888,9 @@ def aim1_3_read_download_UCI_database(config, dataset_name=''):
 
         return data, feature_columns
 
-    if   config.dataset.read_mode == ReadMode.READ_ARFF: return reading_from_arff()
-    elif config.dataset.read_mode == ReadMode.READ:      return read_data()
-    elif config.dataset.read_mode == ReadMode.DOWNLOAd:  return download_data()
+    if   config.dataset.read_mode is ReadMode.READ_ARFF: return reading_from_arff()
+    elif config.dataset.read_mode is ReadMode.READ:      return read_data()
+    elif config.dataset.read_mode is ReadMode.DOWNLOAD:  return download_data()
 
 
 

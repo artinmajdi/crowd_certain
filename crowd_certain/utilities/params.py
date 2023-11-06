@@ -48,10 +48,10 @@ class DataModes(enum.Enum):
 
 @members
 class EvaluationMetricNames(enum.Enum):
-	ACC = 'acc'
-	AUC = 'auc'
-	F1  = 'f1'
-	THRESHOLD = 'threshold'
+	ACC = 'ACC'
+	AUC = 'AUC'
+	F1  = 'F1'
+	THRESHOLD = 'THRESHOLD'
 
 
 @members

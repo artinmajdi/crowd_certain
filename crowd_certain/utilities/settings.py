@@ -55,7 +55,7 @@ class DatasetSettings(BaseModel):
 	dataset_name      : DatasetNames = None
 	datasetNames      : list[DatasetNames]  = None
 	non_null_samples  : bool                = True
-	train_test_ratio  : confloat(ge=0,le=1) = 0.7
+	train_test_ratio  : confloat(ge=0.0,le=1.0) = 0.7
 	random_state      : int                 = 0
 	read_mode         : ReadMode            = ReadMode.READ_ARFF
 	shuffle: bool = False
@@ -78,11 +78,11 @@ class OutputSettings(BaseModel):
 
 
 class SimulationSettings(BaseModel):
-	nlabelers_min_max   : list[int] = [3,8],
-	high_dis            : float       = 1,
-	low_dis             : float       = 0.4,
-	num_simulations     : int         = 10,
-	num_seeds           : int         = 3,
+	nlabelers_min_max   : list[int] = [3,8]
+	high_dis            : float       = 1
+	low_dis             : float       = 0.4
+	num_simulations     : int         = 10
+	num_seeds           : int         = 3
 	use_parallelization: bool         = True
 
 	@property
@@ -128,7 +128,7 @@ def get_settings(argv=None, jupyter=True, config_path='config.json') -> 'Setting
 
 		return {k: v for k, v in vars(parsed_args).items() if v is not None}
 
-	def get_config(args_dict: dict[str]) -> Settings:
+	def get_config(args_dict: dict[str, Any]) -> Settings:
 
 		# Loading the config.json file
 		if args_dict.get('config') is not None:

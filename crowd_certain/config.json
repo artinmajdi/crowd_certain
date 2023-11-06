@@ -4,7 +4,7 @@
     "random_state"      : 0,
     "path_all_datasets": "datasets",
     "dataset_name" : "kr-vs-kp",
-    "datasetNames"     : ["kr-vs-kp", "mushroom", "iris", "spambase", "tic-tac-toe", "sick", "waveform", "car", "vote", "ionosphere"],
+    "datasetNames"     : ["kr-vs-kp", "mushroom"],
     "datasetInfoList"  : [],
     "not_null_samples" : true,
     "train_test_ratio" : 0.7,
@@ -14,7 +14,7 @@
     "main_url"         : "https://archive.ics.uci.edu/ml/machine-learning-databases/"
   },
   "simulation": {
-    "nlabelers_min_max"       : [3,8],
+    "nlabelers_min_max"       : [3,6],
     "high_dis"                : 1.0,
     "low_dis"                 : 0.4,
     "num_simulations"         : 10,
@@ -22,8 +22,8 @@
     "use_parallelization"     : true
   },
   "output": {
-    "mode": "calculate",
-    "save": false,
+    "mode": "load_local",
+    "save": true,
     "path": "outputs"
   }
 }
