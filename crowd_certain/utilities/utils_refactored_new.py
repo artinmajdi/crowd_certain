@@ -6,7 +6,6 @@ import os
 import pathlib
 import pickle
 import sys
-from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Any
 
@@ -121,8 +120,8 @@ def reading_user_input_arguments(argv=None, jupyter=True, config_name='../config
             args = argparse.Namespace(**updated_args)
 
             # Updating the paths to their absolute path
-            args.outputs_path = pathlib.Path(args.outputs_path).resolve()
-            args.dataset_path = pathlib.Path(args.dataset_path).resolve()
+            args.outputs_path = pathlib.Path(__file__).parent.parent / 'outputs'
+            args.dataset_path = pathlib.Path(__file__).parent.parent / 'datasets'
             args.workers_list    = list(range(*args.nlabelers_min_max))
 
         return args
@@ -776,7 +775,7 @@ class AIM1_3:
 
         elif config.outputs_mode == 'calculate':
 
-            outputs = defaultdict(list)
+            outputs = {}
             for nl in tqdm(config.workers_list, desc='looping through different # labelers'):
                 aim1_3 = AIM1_3(config=config, n_labelers=nl, data=data, feature_columns=feature_columns)
 
@@ -950,7 +949,7 @@ class OutputsForVisualization:
         return ClassResultsComparisons(weight_strength_relation=weight_strength_relation, findings_confidence_score=findings_confidence_score, outputs=outputs, config=config)
 
     @staticmethod
-    def run_full_experiment_for_figures(config): # type: (argparse.Namespace, Any) -> Dict[str, ClassResultsComparisons]
+    def run_full_experiment_for_figures(config: argparse.Namespace) -> Dict[str, ClassResultsComparisons]:
         return {dt: OutputsForVisualization.run_for_one_dataset(dataset_name=dt, config=config) for dt in config.dataset_list}
 
     @staticmethod
