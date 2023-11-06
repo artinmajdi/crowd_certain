@@ -22,6 +22,8 @@ def members(cls):
 @members
 class ReadMode(enum.Enum):
 	READ_ARFF = 'read_arff'
+	READ      = 'read'
+	DOWNLOAD  = 'download'
 
 
 @members
@@ -59,7 +61,7 @@ class FindingNames(enum.Enum):
 
 
 @members
-class SimulationOptions(enum.Enum):
+class OutputModes(enum.Enum):
 	CALCULATE   = "calculate"
 	LOAD_LOCAL  = "load_local"
 

@@ -3,19 +3,56 @@ import json
 import pathlib
 import sys
 from dataclasses import dataclass, field, InitVar
-from typing import Any, TypeAlias, Union
+from typing import Any, TypeAlias, Union, Optional, Type
 
-from pydantic import BaseModel, confloat, conint, Field, FieldValidationInfo
+from pydantic import BaseModel, confloat, conint, Field, FieldValidationInfo, validator, root_validator
 from pydantic.functional_validators import field_validator
 
-from crowd_certain.utilities.params import DataModes, DatasetNames, SimulationOptions, ReadMode
+from crowd_certain.utilities.params import DataModes, DatasetNames, OutputModes, ReadMode
 
 PathNoneType: TypeAlias = Union[pathlib.Path, None]
 
 
+# class CommonBaseModel(BaseModel):
+#     # Define the absolute path adjustment in a root_validator
+#     @root_validator(pre=True)
+#     def make_path_absolute(cls, values):
+#         for field_name, model_field in cls.__fields__.items():
+#             # Check if the field type is pathlib.Path
+#             if issubclass(model_field.type_, pathlib.Path):
+#                 # Check if the field is in values and is a Path (to prevent overwriting non-Path values)
+#                 if field_name in values and isinstance(values[field_name], pathlib.Path):
+#                     # Adjust the path to be absolute
+#                     values[field_name] = pathlib.Path(__file__).parents[1] / values[field_name]
+#         return values
+
+
+# def add_path_validator(model_class: Type[BaseModel]) -> Type[BaseModel]:
+#     # Define a classmethod inside the decorator
+#     @classmethod
+#     def make_path_absolute(cls, v: pathlib.Path):
+#         if not v.is_absolute():
+#             return pathlib.Path(__file__).parents[1] / v
+#         return v
+
+#     # Dynamically add validators for all pathlib.Path fields
+#     for field_name, field_type in model_class.__annotations__.items():
+#         if field_type == pathlib.Path:
+#             # The name of the validator is composed to be unique for each field
+#             validator_name = f"validate_{field_name}"
+#             setattr(
+#                 model_class,
+#                 validator_name,
+#                 validator(field_name, allow_reuse=True)(make_path_absolute)
+#             )
+
+#     return model_class
+
+# @add_path_validator
 class DatasetSettings(BaseModel):
 	data_mode         : DataModes           = DataModes.TRAIN
-	path_all_datasets: pathlib.Path         = pathlib.Path('../datasets')
+	path_all_datasets: pathlib.Path         = pathlib.Path('datasets')
+	dataset_name      : DatasetNames = None
 	datasetNames      : list[DatasetNames]  = None
 	non_null_samples  : bool                = True
 	train_test_ratio  : confloat(ge=0,le=1) = 0.7
@@ -23,36 +60,36 @@ class DatasetSettings(BaseModel):
 	read_mode         : ReadMode            = ReadMode.READ_ARFF
 	shuffle: bool = False
 	augmentation_count: conint(ge   = 0) = 1
-
+	main_url: str = "https://archive.ics.uci.edu/ml/machine-learning-databases/"
 
 	@field_validator('path_all_datasets', mode='after')
 	def make_path_absolute(cls, v: pathlib.Path):
-		return v.resolve()
+		return (pathlib.Path(__file__).parents[1] / v).resolve()
 
-	# @field_validator('datasetInfoList', mode='before')
-	# def post_process_info(cls, v: None, info: FieldValidationInfo) -> list[DatasetInfo]:
-	# 	return [ DatasetInfo(   path_all_datasets = info.data['path_all_datasets'],
-	# 							data_mode         = info.data['data_mode'],
-	# 							views 			  = info.data['views'],
-	# 							datasetName       = dt )
-	# 			 for dt in info.data['datasetNames']]
-
-class SimulationSettings(BaseModel):
-	nlabelers_min_max   : list[float] = [3,8],
-	high_dis            : int         = 1,
-	low_dis             : int         = 0.4,
-	num_simulations     : int         = 10,
-	num_seeds           : int         = 3,
-	use_parallelization: bool         = True
-
+# @add_path_validator
 class OutputSettings(BaseModel):
-	path: pathlib.Path = pathlib.Path('../outputs')
-	mode: SimulationOptions = SimulationOptions.CALCULATE
+	path: pathlib.Path = pathlib.Path('outputs')
+	mode: OutputModes = OutputModes.CALCULATE
 	save: bool = False
 
 	@field_validator('path', mode='after')
 	def make_path_absolute(cls, v: pathlib.Path):
-		return v.resolve()
+		return (pathlib.Path(__file__).parents[1] / v).resolve()
+
+
+class SimulationSettings(BaseModel):
+	nlabelers_min_max   : list[int] = [3,8],
+	high_dis            : float       = 1,
+	low_dis             : float       = 0.4,
+	num_simulations     : int         = 10,
+	num_seeds           : int         = 3,
+	use_parallelization: bool         = True
+
+	@property
+	def workers_list(self):
+		return list(range(*self.nlabelers_min_max))
+
+
 
 
 class Settings(BaseModel):
@@ -91,13 +128,16 @@ def get_settings(argv=None, jupyter=True, config_path='config.json') -> 'Setting
 
 		return {k: v for k, v in vars(parsed_args).items() if v is not None}
 
-	def get_config(args_dict: dict) -> Union[Settings,ValueError]:
+	def get_config(args_dict: dict[str]) -> Settings:
 
 		# Loading the config.json file
-		config_dir = pathlib.Path( args_dict.get('config') or config_path ).resolve()
+		if args_dict.get('config') is not None:
+			config_dir = pathlib.Path(args_dict.get('config'))
+		else:
+			config_dir = pathlib.Path(__file__).parent.parent / 'config.json'
 
 		if not config_dir.exists():
-			return ValueError(f'Config file not found at {config_dir}')
+			raise FileNotFoundError(f'Config file not found at {config_dir}')
 
 		with open(config_dir) as f:
 			config_data = json.load(f)

@@ -22,114 +22,8 @@ from sklearn import ensemble as sk_ensemble, metrics as sk_metrics
 from tqdm import tqdm_notebook as tqdm
 
 from crowd_certain.utilities import load_data
-
-def reading_user_input_arguments(argv=None, jupyter=True, config_name='../config.json', **kwargs) -> argparse.Namespace:
-
-    class DatasetList( enum.Enum ):
-        KR_VS_KP    = "kr-vs-kp"
-        MUSHROOM    = "mushroom"
-        IRIS        = "iris"
-        SPAMBASE    = "spambase"
-        TIC_TAC_TOE = "tic-tac-toe"
-        SICK        = "sick"
-        WAVEFORM    = "waveform"
-        CAR         = "car"
-        VOTE        = "vote"
-        IONOSPHERE  = "ionosphere"
-
-    class OutputsMode( enum.Enum ):
-        CALCULATE   = "calculate"
-        LOAD_LOCAL  = "load_local"
-
-    # dataset_list = list( DatasetList.__members__.keys() )
-
-    def get_command_line_args() -> argparse.Namespace:
-        """	Getting the arguments from the command line
-            Problem: 	Jupyter Notebook automatically passes some command-line arguments to the kernel.
-                        When we run argparse.ArgumentParser.parse_args(), it tries to parse those arguments, which are not recognized by your argument parser.
-            Solution: 	To avoid this issue, you can modify your get_args() function to accept an optional list of command-line arguments, instead of always using sys.argv.
-                        When this list is provided, the function will parse the arguments from it instead of the command-line arguments. """
-
-        # If argv is not provided, use sys.argv[1:] to skip the script name
-        args = [] if jupyter else (argv or sys.argv[1:])
-
-        args_list = [
-                    # Dataset
-                    dict(name='dataset_name', type=str, help='Name of the dataset'),
-                    dict(name='data_mode'   , type=str, help='Dataset mode: train or valid'),
-
-                    # Model
-                    dict(name='model_name'   , type=str , help='Name of the pre_trained model.' ),
-                    dict(name='architecture' , type=str , help='Name of the architecture'       ),
-
-                    # Training
-                    dict(name = 'batch_size'     , type = int   , help = 'Number of batches to process' ),
-                    dict(name = 'n_epochs'       , type = int   , help = 'Number of epochs to process'  ),
-                    dict(name = 'learning_rate'  , type = float  , help = 'Learning rate'                ),
-                    dict(name = 'n_augmentation' , type = int   , help = 'Number of augmentations'      ),
-
-                    # Hyperparameter Optimization
-                    dict(name = 'parent_condition_mode' , type = str, help = 'Parent condition mode: truth or predicted'              ),
-                    dict(name = 'approach'              , type = str, help = 'Hyper parameter optimization approach'                  ),
-                    dict(name = 'max_evals'             , type = int, help = 'Number of evaluations for hyper parameter optimization' ),
-                    dict(name = 'n_batches_to_process'  , type = int, help = 'Number of batches to process'                           ),
-
-                    # Config
-                    dict(name='config'                   , type=str , help='Path to config file' , default='config.json' ),
-                    ]
-
-        # Initializing the parser
-        parser = argparse.ArgumentParser()
-
-        # Adding arguments
-        for g in args_list:
-            parser.add_argument(f'--{g["name"].replace("_","-")}', type=g['type'], help=g['help'], default=g.get('default'), choices=g.get('choices')) # type: ignore
-
-        # Filter out any arguments starting with '-f'
-        filtered_argv = [arg for arg in args if not (arg.startswith('-f') or 'jupyter/runtime' in arg.lower())]
-
-        # Parsing the arguments
-        return parser.parse_args(args=filtered_argv)
-
-    def update_config_with_kwargs(updated_args):
-        if kwargs and len(kwargs) > 0:
-            for key in kwargs.keys():
-                updated_args[key] = kwargs[key]
-        return updated_args
-
-    def get_config(args): # type: (argparse.Namespace) -> argparse.Namespace
-
-        # Loading the config.json file
-        base_path = pathlib.Path(__file__).parent
-        config_dir =  base_path / (config_name if jupyter else args.config)
-
-        if os.path.exists(config_dir):
-            with open(config_dir) as f:
-                config_raw = json.load(f)
-
-            # converting args to dictionary
-            args_dict = vars(args) if args else {}
-
-            # Updating the config with the arguments as command line input
-            updated_args ={key: args_dict.get(key) or values for key, values in config_raw.items() }
-
-            # Updating the config with the arguments as function input: used for facilitating the jupyter notebook access
-            updated_args = update_config_with_kwargs( updated_args )
-
-            # Convert the dictionary to a Namespace
-            args = argparse.Namespace(**updated_args)
-
-            # Updating the paths to their absolute path
-            args.outputs_path = pathlib.Path(__file__).parent.parent / 'outputs'
-            args.dataset_path = pathlib.Path(__file__).parent.parent / 'datasets'
-            args.workers_list    = list(range(*args.nlabelers_min_max))
-
-        return args
-
-    # Updating the config file
-    return  get_config(args=get_command_line_args())
-
-
+from crowd_certain.utilities.params import DatasetNames
+from crowd_certain.utilities.settings import Settings, OutputModes
 class LoadSaveFile:
     def __init__(self, path):
         self.path = path
@@ -150,7 +44,7 @@ class LoadSaveFile:
 
         return None
 
-    def dump(self, file, index=False, upload_artifact=False, artifact_path=''):
+    def dump(self, file, index=False):
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -471,7 +365,7 @@ class AIM1_3:
 
                 labelers_names = [f'labeler_{j}' for j in range(n_labelers)]
 
-                labelers_strength_array = np.random.uniform(low=config.low_dis, high=config.high_dis, size=n_labelers)
+                labelers_strength_array = np.random.uniform(low=config.simulation.low_dis, high=config.simulation.high_dis, size=n_labelers)
 
                 return pd.DataFrame({'labelers_strength': labelers_strength_array}, index=labelers_names)
 
@@ -502,7 +396,7 @@ class AIM1_3:
                     SIMULATION_TYPE = 'random_state'
 
                     if SIMULATION_TYPE == 'random_state':
-                        for sim_num in range(config.num_simulations):
+                        for sim_num in range(config.simulation.num_simulations):
                             # training a random forest on the aformentioned labels
                             RF = sk_ensemble.RandomForestClassifier(n_estimators=4, max_depth=4, random_state=sim_num)  # n_estimators=4, max_depth=4
                             # RF = sklearn.tree.DecisionTreeClassifier(random_state=sim_num)
@@ -554,9 +448,9 @@ class AIM1_3:
                 for mode in ['train', 'test']:
 
                     # reversing the order of simulations and labelers. NOTE: for the final experiment I should use simulation_0. if I use the mv, then because the augmented truths keeps changing in each simulation, then with enough simulations, I'll end up witht perfect labelers.
-                    for i in range(config.num_simulations + 1):
+                    for i in range(config.simulation.num_simulations + 1):
 
-                        SM = f'simulation_{i}' if i < config.num_simulations else 'mv'
+                        SM = f'simulation_{i}' if i < config.simulation.num_simulations else 'mv'
 
                         preds[mode][SM] = pd.DataFrame()
                         for LB in [f'labeler_{j}' for j in range(n_labelers)]:
@@ -708,20 +602,20 @@ class AIM1_3:
 
         np.random.seed(seed + 1)
         metric_name = 'weight_strength_relation'
-        path_main = config.outputs_path / metric_name / config.dataset_name
+        path_main = config.output.path / metric_name / config.dataset.dataset_name.value
 
-        if config.outputs_mode == 'calculate':
+        if config.output.mode is OutputModes.CALCULATE:
             df = AIM1_3.core_measurements(n_labelers=n_labelers, config=config, data=data, feature_columns=feature_columns).labelers_strength.set_index('labelers_strength').sort_index()
 
-            if config.save_outputs:
-                LoadSaveFile(path_main / f'{metric_name}.xlsx').dump(df, upload_artifact=config.upload_artifact, artifact_path=metric_name, index=True)
+            if config.output.save:
+                LoadSaveFile(path_main / f'{metric_name}.xlsx').dump(df, index=True)
 
             return df
 
-        elif config.outputs_mode == 'load_local':
+        elif config.output.mode is OutputModes.LOAD_LOCAL:
             return LoadSaveFile(path_main / f'{metric_name}.xlsx').load(header=0)
 
-        raise ValueError(f'Unknown outputs_mode: {config.outputs_mode}')
+        raise ValueError(f'Unknown outputs_mode: {config.output.mode}')
 
     @staticmethod
     def applying_other_benchmarks(true_labels):
@@ -762,33 +656,33 @@ class AIM1_3:
         def get_core_results_not_parallel() -> List[Results]:
             # This is not written as one line for loop on purpose (for debugging purposes)
             core_results = []
-            for seed in range(config.num_seeds):
+            for seed in range(config.simulation.num_seeds):
                 core_results.append(aim1_3.get_core_measurements(seed=seed))
 
             return core_results
 
 
-        path = config.outputs_path / 'outputs' / f'{config.dataset_name}.pkl'
+        path = config.output.path / 'outputs' / f'{config.dataset.dataset_name}.pkl'
 
-        if config.outputs_mode == 'load_local':
+        if config.output.mode is OutputModes.LOAD_LOCAL:
             return LoadSaveFile(path).load() # type: ignore
 
-        elif config.outputs_mode == 'calculate':
+        elif config.output.mode is OutputModes.CALCULATE:
 
             outputs = {}
-            for nl in tqdm(config.workers_list, desc='looping through different # labelers'):
+            for nl in tqdm(config.simulation.workers_list, desc='looping through different # labelers'):
                 aim1_3 = AIM1_3(config=config, n_labelers=nl, data=data, feature_columns=feature_columns)
 
                 # Get the core measurements for all seeds
-                if config.parallel_processing:
-                    with multiprocessing.Pool(processes=config.num_seeds) as pool:
-                        outputs[f'NL{nl}'] = pool.map( aim1_3.get_core_measurements, list(range(config.num_seeds)))
+                if config.simulation.use_parallelization:
+                    with multiprocessing.Pool(processes=config.simulation.num_seeds) as pool:
+                        outputs[f'NL{nl}'] = pool.map( aim1_3.get_core_measurements, list(range(config.simulation.num_seeds)))
                 else:
                     outputs[f'NL{nl}'] = get_core_results_not_parallel()
 
             # Saving the outputs locally
-            if config.save_outputs:
-                LoadSaveFile(path).dump(outputs, upload_artifact=config.upload_artifact, artifact_path='outputs/tables/')
+            if config.output.save:
+                LoadSaveFile(path).dump(outputs)
 
             return outputs
 
@@ -910,7 +804,7 @@ def data_interpolation(x, y, smooth=False, interpolation_pt_count=1000):
 @dataclass
 class ClassResultsComparisons:
     outputs                 : dict
-    config                   : argparse.Namespace
+    config                   : 'Settings'
     findings_confidence_score : dict
     weight_strength_relation : pd.DataFrame
 
@@ -929,10 +823,10 @@ class OutputsForVisualization:
         self.weight_strength_relation = None
 
     @staticmethod
-    def run_for_one_dataset(config, dataset_name='ionosphere'): # type (argparse.Namespace, str, Any) -> ClassResultsComparisons:
+    def run_for_one_dataset(config: 'Settings', dataset_name: DatasetNames=DatasetNames.IONOSPHERE) -> ClassResultsComparisons:
 
         np.random.seed(0)
-        config.dataset_name = dataset_name
+        config.dataset.dataset_name = DatasetNames(dataset_name)
 
         # loading the dataset
         data, feature_columns = load_data.aim1_3_read_download_UCI_database(config=config) # type: ignore
@@ -949,20 +843,20 @@ class OutputsForVisualization:
         return ClassResultsComparisons(weight_strength_relation=weight_strength_relation, findings_confidence_score=findings_confidence_score, outputs=outputs, config=config)
 
     @staticmethod
-    def run_full_experiment_for_figures(config: argparse.Namespace) -> Dict[str, ClassResultsComparisons]:
-        return {dt: OutputsForVisualization.run_for_one_dataset(dataset_name=dt, config=config) for dt in config.dataset_list}
+    def run_full_experiment_for_figures(config: 'Settings') -> Dict[DatasetNames, ClassResultsComparisons]:
+        return {dt: OutputsForVisualization.run_for_one_dataset(dataset_name=dt.value, config=config) for dt in config.dataset.datasetNames}
 
     @staticmethod
     def get_F_stuff(outputs, config):
 
-        path_main = config.outputs_path / 'confidence_score' / config.dataset_name
+        path_main = config.output.path / f'confidence_score/{config.dataset.dataset_name}'
 
         DICT_KEYS = ['F_all', 'F_pos_all', 'F_mean_over_seeds', 'F_pos_mean_over_seeds']
 
         def get_Fs_per_nl_per_strategy(strategy, n_workers):
 
             def get(stuff):
-                seeds_list   = list(range(config.num_seeds))
+                seeds_list   = list(range(config.simulation.num_seeds))
                 methods_list = AIM1_3.METHODS_PROPOSED + AIM1_3.METHODS_MAIN_BENCHMARKS
                 columns      = pd.MultiIndex.from_product([methods_list, seeds_list], names=['method', 'seed_ix'])
                 df			 = pd.DataFrame(columns=columns)
@@ -980,12 +874,12 @@ class OutputsForVisualization:
             return inF, inF_pos, inF_mean_over_seeds, inF_pos_mean_over_seeds
 
 
-        if config.outputs_mode == 'calculate':
+        if config.output.mode is OutputModes.CALCULATE:
 
             F_dict = { key : dict(freq={}, beta={}) for key in DICT_KEYS }
 
             for st in ['freq', 'beta']:
-                for nl in [f'NL{x}' for x in config.workers_list]:
+                for nl in [f'NL{x}' for x in config.simulation.workers_list]:
 
                     F, F_pos, F_mean_over_seeds, F_pos_mean_over_seeds = get_Fs_per_nl_per_strategy( strategy=st, n_workers=nl )
 
@@ -995,17 +889,17 @@ class OutputsForVisualization:
                     F_dict['F_pos_mean_over_seeds'][st][nl] = F_pos_mean_over_seeds.copy()
 
 
-            if config.save_outputs:
+            if config.output.save:
                 for name in DICT_KEYS:
-                    LoadSaveFile(path_main / f'{name}.pkl').dump(F_dict[name], upload_artifact=config.upload_artifact, artifact_path='')
+                    LoadSaveFile(path_main / f'{name}.pkl').dump(F_dict[name])
 
             return F_dict
 
-        elif config.outputs_mode == 'load_local':
+        elif config.output.mode == OutputModes.LOAD_LOCAL:
             return { key: LoadSaveFile(path_main / f'{key}.pkl').load()  for key in DICT_KEYS }
 
 
-        raise ValueError(f'Unknown config.outputs_mode: {config.outputs_mode}')
+        raise ValueError(f'Unknown config.output.mode: {config.output.mode}')
 
 
 class Aim1_3_Data_Analysis_Results:
@@ -1028,11 +922,11 @@ class Aim1_3_Data_Analysis_Results:
             else:
                 return df.drop(index=['proposed']).rename(index={n:self.RENAME_MAPS[n] for n in ['proposed_penalized']})
 
-        def get_metrics_mean_over_seeds(dataset_name1, n_workers) -> pd.DataFrame:
-            seed_list = list(range(self.config.num_seeds))
+        def get_metrics_mean_over_seeds(dataset_name1: DatasetNames, n_workers) -> pd.DataFrame:
+            seed_list = list(range(self.config.simulation.num_seeds))
             df_all    = pd.DataFrame(columns=pd.MultiIndex.from_product([seed_list, ['AUC', 'ACC', 'F1']], names=['s', 'metric']))
 
-            for s in range( self.config.num_seeds ):
+            for s in range( self.config.simulation.num_seeds ):
                 df_all[s] = self.results_all_datasets[dataset_name1].outputs[n_workers][s].metrics.T.astype( float )
 
             return df_all.groupby(level='metric', axis=1).mean()
@@ -1054,13 +948,13 @@ class Aim1_3_Data_Analysis_Results:
             value_vars = list(self.RENAME_MAPS.values()) + ['Tao']
 
             wwr = pd.DataFrame()
-            for dt in self.config.dataset_list:
+            for dt in self.config.dataset.datasetNames:
 
-                df = (self.results_all_datasets[dt].weight_strength_relation
+                df = (self.results_all_datasets[dt.value].weight_strength_relation
                         .rename(columns=self.RENAME_MAPS)
                         .melt(id_vars=['labelers_strength'], value_vars=value_vars, var_name='Method', value_name='Weight'))
 
-                wwr = pd.concat([wwr, df.assign(dataset_name=dt)], axis=0)
+                wwr = pd.concat([wwr, df.assign(dataset_name=dt.value)], axis=0)
 
             return wwr
 
@@ -1088,14 +982,14 @@ class Aim1_3_Data_Analysis_Results:
                 return drop_proposed_rename_crowd_certain(df, orient='index')
 
             elif metric_name == 'metrics_all_datasets_workers':
-                workers_list = [f'NL{i}' for i in self.config.workers_list]
+                workers_list = [f'NL{i}' for i in self.config.simulation.workers_list]
 
-                columns = pd.MultiIndex.from_product([['ACC','AUC','F1'], self.config.dataset_list, workers_list], names=['metric', 'dataset', 'workers'])
+                columns = pd.MultiIndex.from_product([['ACC','AUC','F1'], self.config.dataset.datasetNames, workers_list], names=['metric', 'dataset', 'workers'])
                 df = pd.DataFrame(columns=columns)
 
-                for dt in self.config.dataset_list:
+                for dt in self.config.dataset.datasetNames:
                     for nl in workers_list:
-                        df_temp = get_metrics_mean_over_seeds(dt, nl)
+                        df_temp = get_metrics_mean_over_seeds(dt.value, nl)
                         df_temp = drop_proposed_rename_crowd_certain(df_temp, orient='index')
 
                         for metric in ['ACC','AUC','F1']:
@@ -1135,11 +1029,11 @@ class Aim1_3_Data_Analysis_Results:
             return ece
 
         if metric_name == 'F_eval_one_dataset_all_labelers':
-            target_list = [f'NL{x}' for x in self.config.workers_list]
+            target_list = [f'NL{x}' for x in self.config.simulation.workers_list]
             target_name = 'n_labelers'
             get_params = lambda i: dict(nl=i, dataset_name=dataset_name)
         elif metric_name == 'F_eval_one_worker_all_datasets':
-            target_list = self.config.dataset_list
+            target_list = self.config.dataset.datasetNames
             target_name = 'dataset_name'
             get_params = lambda i: dict(nl=nl, dataset_name=i)
         else:
@@ -1164,7 +1058,7 @@ class Aim1_3_Data_Analysis_Results:
     def save_outputs(self, filename, relative_path, dataframe=None):
 
         # output path
-        path = self.config.outputs_path / relative_path / filename
+        path = self.config.output.path / relative_path / filename
         path.mkdir(parents=True, exist_ok=True)
 
         # Save the plot
@@ -1199,7 +1093,7 @@ class Aim1_3_Data_Analysis_Results:
         metric_name='metrics_mean_over_seeds_per_dataset_per_worker'
 
         df = pd.DataFrame()
-        for dt in self.config.dataset_list:
+        for dt in self.config.dataset.datasetNames:
             df[dt] = self.get_result( metric_name=metric_name, dataset_name=dt, nl=f'NL{nl}')[metric] # type: ignore
 
 
