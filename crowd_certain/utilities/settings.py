@@ -84,6 +84,7 @@ class SimulationSettings(BaseModel):
 	num_simulations     : int         = 10
 	num_seeds           : int         = 3
 	use_parallelization: bool         = True
+	max_parallel_workers: int = 10
 
 	@property
 	def workers_list(self):

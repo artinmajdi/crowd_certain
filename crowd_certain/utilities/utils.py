@@ -13,12 +13,14 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import sklearn
-import tensorflow as tf
 from crowdkit import aggregation as crowdkit_aggregation
 from matplotlib import pyplot as plt
 from scipy.interpolate import make_interp_spline
 from scipy.special import bdtrc
 from sklearn import ensemble as sk_ensemble, metrics as sk_metrics
+from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Dict, List
 from tqdm import tqdm
 
 from crowd_certain.utilities import load_data
@@ -666,6 +668,45 @@ class AIM1_3:
     @staticmethod
     def get_outputs(config, data=None, feature_columns=None) -> Dict[str, List[Results]]:
 
+        def get_core_measurements(aim1_3_instance, seed):
+            return aim1_3_instance.get_core_measurements(seed=seed)
+
+        def get_core_results_parallel(aim1_3_instance) -> List[Results]:
+            with ThreadPoolExecutor(max_workers=config.simulation.max_parallel_workers) as executor:
+                future_to_seed = {executor.submit(get_core_measurements, aim1_3_instance, seed): seed for seed in range(config.simulation.num_seeds)}
+                core_results = []
+                for future in tqdm(as_completed(future_to_seed), total=len(future_to_seed), desc='Processing seeds'):
+                    core_results.append(future.result())
+                return core_results
+
+        def process_nl(nl):
+            aim1_3_instance = AIM1_3(config=config, n_labelers=nl, data=data, feature_columns=feature_columns)
+            return f'NL{nl}', get_core_results_parallel(aim1_3_instance)
+
+        path = config.output.path / 'outputs' / f'{config.dataset.dataset_name}.pkl'
+
+        if config.output.mode is OutputModes.LOAD_LOCAL:
+            return LoadSaveFile(path).load()
+
+        elif config.output.mode is OutputModes.CALCULATE:
+            outputs = {}
+            with ThreadPoolExecutor() as executor:
+                futures = [executor.submit(process_nl, nl) for nl in config.simulation.workers_list]
+                for future in tqdm(as_completed(futures), total=len(futures), desc='Processing labelers'):
+                    nl, result = future.result()
+                    outputs[nl] = result
+
+            if config.output.save:
+                LoadSaveFile(path).dump(outputs)
+
+            return outputs
+
+        return None  # type: ignore
+
+
+    @staticmethod
+    def get_outputs_old(config, data=None, feature_columns=None) -> Dict[str, List[Results]]:
+
         def get_core_results_not_parallel() -> List[Results]:
             # This is not written as one line for loop on purpose (for debugging purposes)
             core_results = []
@@ -884,8 +925,8 @@ class OutputsForVisualization:
 
             inF     = get( 'F' )
             inF_pos = get( 'P_pos' ) if strategy == 'freq' else get( 'I' )
-            inF_mean_over_seeds     = inF.groupby( level=0, axis=1 ).mean()
-            inF_pos_mean_over_seeds = inF_pos.groupby( level=0, axis=1 ).mean()
+            inF_mean_over_seeds     = inF.T.groupby(level=0).mean().T
+            inF_pos_mean_over_seeds = inF_pos.T.groupby(level=0).mean().T
 
             return inF, inF_pos, inF_mean_over_seeds, inF_pos_mean_over_seeds
 
