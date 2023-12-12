@@ -2,10 +2,9 @@ import argparse
 import json
 import pathlib
 import sys
-from dataclasses import dataclass, field, InitVar
-from typing import Any, TypeAlias, Union, Optional, Type
+from typing import Any, TypeAlias, Union
 
-from pydantic import BaseModel, confloat, conint, Field, FieldValidationInfo, validator, root_validator
+from pydantic import BaseModel, confloat, conint
 from pydantic.functional_validators import field_validator
 
 from crowd_certain.utilities.params import DataModes, DatasetNames, OutputModes, ReadMode
@@ -105,7 +104,7 @@ class Settings(BaseModel):
 		str_strip_whitespace = True
 
 
-def get_settings(argv=None, jupyter=True, config_path='config.json') -> 'Settings':
+def get_settings(argv=None, jupyter=True) -> 'Settings':
 
 	def parse_args() -> dict:
 		"""	Getting the arguments from the command line
