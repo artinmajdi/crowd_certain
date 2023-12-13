@@ -1,3 +1,4 @@
+import enum
 import multiprocessing
 import pickle
 from concurrent.futures import as_completed, ThreadPoolExecutor
@@ -103,10 +104,10 @@ class Aim1_3_ApplyingBenchmarksToCrowdData:
 
 		# train    = self.crowd_labels['train']
 		# train_gt = self.ground_truth['train']
-		test     = self.crowd_labels['test' ]
+		test: pd.DataFrame = self.crowd_labels['test' ]
 
 		# Measuring predicted labels for each benchmar technique:
-		test_unique = test.task.unique()
+		test_unique: np.ndarray = test.task.unique()
 
 		def exception_handler(func):
 			def inner_function(*args, **kwargs):
@@ -173,7 +174,7 @@ class Aim1_3_ApplyingBenchmarksToCrowdData:
 		def DawidSkene():
 			return crowdkit_aggregation.DawidSkene().fit_predict(test)
 
-		aggregated_labels = pd.DataFrame()
+		aggregated_labels = pd.DataFrame(columns=list(OtherBenchmarkNames), index=test_unique)
 		for m in OtherBenchmarkNames:
 			aggregated_labels[m] = eval(m.value)()
 
@@ -212,7 +213,7 @@ class Aim1_3_ApplyingBenchmarksToCrowdData:
 @dataclass
 class Results:
 	true_labels      : Dict[str, pd.DataFrame]
-	F                : Dict[str, Dict[str, pd.DataFrame]]
+	F                : Dict[StrategyNames, Dict[enum.Enum, pd.DataFrame]]
 	aggregated_labels: pd.DataFrame
 	weights_proposed : pd.DataFrame
 	weights_Tao      : pd.DataFrame
@@ -260,7 +261,7 @@ class AIM1_3:
 
 
 	@staticmethod
-	def measuring_nu_and_confidence_score(n_labelers, yhat_proposed_classifier, workers_labels, weights_proposed, weights_Tao) -> Tuple[Dict[str, Dict[str, pd.DataFrame]], pd.DataFrame]:
+	def measuring_nu_and_confidence_score(n_labelers, yhat_proposed_classifier, workers_labels, weights_proposed, weights_Tao) -> Tuple[Dict[StrategyNames, Dict[enum.Enum, pd.DataFrame]], pd.DataFrame]:
 
 		def get_pred_and_weights(method_name: ProposedTechniqueNames):
 			if method_name in ProposedTechniqueNames:
@@ -313,8 +314,8 @@ class AIM1_3:
 
 			return out
 
-		F = dict(freq={}, beta={})
-		aggregated_labels = pd.DataFrame()
+		F = {StrategyNames.FREQ:{}, StrategyNames.BETA:{}}
+		aggregated_labels = pd.DataFrame(columns=list(ProposedTechniqueNames) + list(MainBenchmarks), index=yhat_proposed_classifier.index)
 
 		for methods in [ProposedTechniqueNames, MainBenchmarks]:
 
@@ -345,7 +346,7 @@ class AIM1_3:
 				Final pred labels for proposed benchmarks
 					dataframe = preds[train, test] * [simulation_0]    <=> {rows: samples,  columns: labelers} """
 
-			def getting_noisy_manual_labels_for_each_worker(true, labelers_strength=0.5, seed_num=1):
+			def getting_noisy_manual_labels_for_each_worker(true, l_strength: float=0.5, seed_num: int=1):
 
 				# setting the random seed
 				# np.random.seed(seed_num)
@@ -357,7 +358,7 @@ class AIM1_3:
 				true_label_assignment_prob = np.random.random(num_samples)
 
 				# samples that will have an inaccurate true label
-				false_samples = true_label_assignment_prob < 1 - labelers_strength
+				false_samples = true_label_assignment_prob < 1 - l_strength
 
 				# measuring the new labels for each labeler/worker
 				worker_true = true > 0.5
@@ -391,11 +392,11 @@ class AIM1_3:
 					# Extracting the simulated noisy manual labels based on the worker's strength
 					truth['train'][LB] = getting_noisy_manual_labels_for_each_worker( seed_num=0,  # LB_index,
 																					  true=data['train'].true.values,
-																					  labelers_strength=labelers_strength.T[LB].values )
+																					  l_strength=labelers_strength.T[LB].values )
 
 					truth['test'][LB] = getting_noisy_manual_labels_for_each_worker( seed_num=1,  # LB_index,
 																					 true=data['test'].true.values,
-																					 labelers_strength=labelers_strength.T[LB].values )
+																					 l_strength=labelers_strength.T[LB].values )
 
 					SIMULATION_TYPE = 'random_state'
 
@@ -515,7 +516,7 @@ class AIM1_3:
 			# measuring average weight
 			weights = w_hat.divide(w_hat.sum(axis=0), axis=1)
 
-			probs_weighted = pd.DataFrame()
+			probs_weighted = pd.DataFrame(columns=list(ProposedTechniqueNames), index=predicted_labels.index)
 			for method in ProposedTechniqueNames:
 				# probs_weighted[method] =( predicted_uncertainty * weights[method] ).sum(axis=1)
 				probs_weighted[method] = (predicted_labels * weights[method]).sum( axis=1 )
@@ -633,7 +634,7 @@ class AIM1_3:
 
 
 	@staticmethod
-	def get_AUC_ACC_F1(aggregated_labels, truth): # type: (pd.DataFrame, pd.Series) -> pd.DataFrame
+	def get_AUC_ACC_F1(aggregated_labels: pd.DataFrame, truth: pd.Series) -> pd.DataFrame:
 
 		metrics = pd.DataFrame(index=list(EvaluationMetricNames), columns=aggregated_labels.columns)
 
@@ -646,7 +647,7 @@ class AIM1_3:
 				yhat = (aggregated_labels[m] > 0.5).astype(int)[non_null]
 				metrics[m][EvaluationMetricNames.AUC] = sk_metrics.roc_auc_score( truth_notnull, yhat)
 				metrics[m][EvaluationMetricNames.ACC] = sk_metrics.accuracy_score(truth_notnull, yhat)
-				metrics[m][EvaluationMetricNames.F1]  = sk_metrics.f1_score( 	  truth_notnull, yhat)
+				metrics[m][EvaluationMetricNames.F1 ] = sk_metrics.f1_score( 	  truth_notnull, yhat)
 
 		return metrics
 
@@ -926,6 +927,7 @@ class OutputsForVisualization:
 
 			def get(stuff):
 				seeds_list   = list(range(config.simulation.num_seeds))
+				# methods_list = ProposedTechniqueNames.members() + MainBenchmarks.members()
 				methods_list = list(ProposedTechniqueNames) + list(MainBenchmarks)
 				columns      = pd.MultiIndex.from_product([methods_list, seeds_list], names=['method', 'seed_ix'])
 				df = pd.DataFrame(columns=columns)
@@ -937,15 +939,20 @@ class OutputsForVisualization:
 
 			inF     = get( 'F' )
 			inF_pos = get( 'P_pos' ) if strategy == StrategyNames.FREQ else get( 'I' )
-			inF_mean_over_seeds     = inF.T.groupby(level=0).mean().T
-			inF_pos_mean_over_seeds = inF_pos.T.groupby(level=0).mean().T
+
+			# inF_mean_over_seeds     = inF.T.groupby(level=0).mean().T
+			# inF_pos_mean_over_seeds = inF_pos.T.groupby(level=0).mean().T
+
+			techniques_list         = inF.columns.get_level_values(0)
+			inF_mean_over_seeds     = pd.DataFrame({m: inF[m].mean(axis=1)     for m in techniques_list})
+			inF_pos_mean_over_seeds = pd.DataFrame({m: inF_pos[m].mean(axis=1) for m in techniques_list})
 
 			return inF, inF_pos, inF_mean_over_seeds, inF_pos_mean_over_seeds
 
 
 		if config.output.mode is OutputModes.CALCULATE:
 
-			F_dict = { key : dict(freq={}, beta={}) for key in DICT_KEYS }
+			F_dict = { key : {StrategyNames.FREQ:{}, StrategyNames.BETA:{}} for key in DICT_KEYS }
 
 			for st in StrategyNames:
 				for nl in [f'NL{x}' for x in config.simulation.workers_list]:
@@ -985,6 +992,8 @@ class Aim1_3_Data_Analysis_Results:
 
 	def get_result(self, metric_name='F_all', dataset_name: DatasetNames=DatasetNames.MUSHROOM, strategy=StrategyNames.FREQ , nl='NL3', seed_ix=0, method_name=ProposedTechniqueNames.PROPOSED, data_mode='test'):
 
+		metrics_list = [EvaluationMetricNames.AUC, EvaluationMetricNames.ACC, EvaluationMetricNames.F1]
+
 		def drop_proposed_rename_crowd_certain(df, orient='columns'):
 
 			if orient == 'columns':
@@ -995,12 +1004,14 @@ class Aim1_3_Data_Analysis_Results:
 
 		def get_metrics_mean_over_seeds(dataset_name1: DatasetNames, n_workers) -> pd.DataFrame:
 			seed_list = list(range(self.config.simulation.num_seeds))
-			df_all    = pd.DataFrame(columns=pd.MultiIndex.from_product([seed_list, ['AUC', 'ACC', 'F1']], names=['s', 'metric']))
+			df_all    = pd.DataFrame(columns=pd.MultiIndex.from_product([seed_list, metrics_list], names=['s', 'metric']))
 
 			for s in range( self.config.simulation.num_seeds ):
-				df_all[s] = self.results_all_datasets[dataset_name1].outputs[n_workers][s].metrics.T.astype( float )
+				df_all[s] = self.results_all_datasets[dataset_name1].outputs[n_workers][s].metrics.T.astype( float )[metrics_list]
 
-			return df_all.T.groupby(level='metric').mean().T
+			df_all = df_all.swaplevel(axis=1)
+
+			return pd.DataFrame({m: df_all[m].mean(axis=1) for m in metrics_list}) # df_all.T.groupby(level='metric').mean().T
 
 		if metric_name in ['F_all', 'F_pos_all', 'F_mean_over_seeds', 'F_pos_mean_over_seeds']:
 
@@ -1055,7 +1066,7 @@ class Aim1_3_Data_Analysis_Results:
 			elif metric_name == 'metrics_all_datasets_workers':
 				workers_list = [f'NL{i}' for i in self.config.simulation.workers_list]
 
-				columns = pd.MultiIndex.from_product([['ACC','AUC','F1'], self.config.dataset.datasetNames, workers_list], names=['metric', 'dataset', 'workers'])
+				columns = pd.MultiIndex.from_product([metrics_list, self.config.dataset.datasetNames, workers_list], names=['metric', 'dataset', 'workers'])
 				df = pd.DataFrame(columns=columns)
 
 				for dt in self.config.dataset.datasetNames:
@@ -1063,7 +1074,7 @@ class Aim1_3_Data_Analysis_Results:
 						df_temp = get_metrics_mean_over_seeds(dt, nl)
 						df_temp = drop_proposed_rename_crowd_certain(df_temp, orient='index')
 
-						for metric in ['ACC','AUC','F1']:
+						for metric in metrics_list:
 							df[(metric, dt.value, nl)] = df_temp[metric].copy()
 
 				return df
@@ -1186,12 +1197,15 @@ class Aim1_3_Data_Analysis_Results:
 		self.save_outputs( filename=f'figure_{metric_name}_{metric}', relative_path=relative_path, dataframe=df )
 
 
-	def figure_metrics_all_datasets_workers(self, workers_list=['NL3', 'NL4','NL5'], figsize=(15, 15), font_scale=1.8, fontsize=20, relative_path='final_figures'):
+	def figure_metrics_all_datasets_workers(self, workers_list: list[str]=None, figsize=(15, 15), font_scale=1.8, fontsize=20, relative_path='final_figures'):
+
+		if workers_list is None:
+			workers_list = [f'NL{i}' for i in self.config.simulation.workers_list]
 
 		sns.set(font_scale=font_scale, palette='colorblind', style='darkgrid', context='paper')
 
 		metric_name  = 'metrics_all_datasets_workers'
-		metrics_list = ['ACC', 'F1', 'AUC']
+		metrics_list = [EvaluationMetricNames.ACC, EvaluationMetricNames.AUC, EvaluationMetricNames.F1]
 
 		df: pd.DataFrame = self.get_result(metric_name=metric_name) # type: ignore
 
