@@ -1075,7 +1075,7 @@ class Aim1_3_Data_Analysis_Results:
 						df_temp = drop_proposed_rename_crowd_certain(df_temp, orient='index')
 
 						for metric in metrics_list:
-							df[(metric, dt.value, nl)] = df_temp[metric].copy()
+							df[(metric, dt, nl)] = df_temp[metric].copy()
 
 				return df
 
@@ -1181,10 +1181,9 @@ class Aim1_3_Data_Analysis_Results:
 
 		metric_name='metrics_mean_over_seeds_per_dataset_per_worker'
 
-		df = pd.DataFrame()
-		for dt in self.config.dataset.datasetNames:
-			df[dt.value] = self.get_result( metric_name=metric_name, dataset_name=dt, nl=f'NL{nl}')[metric.value]
-
+		# df = pd.DataFrame(columns=self.config.dataset.datasetNames)
+		# for dt in self.config.dataset.datasetNames:
+		df = pd.DataFrame({dt: self.get_result( metric_name=metric_name, dataset_name=dt, nl=f'NL{nl}')[metric] for dt in self.config.dataset.datasetNames})
 
 		fig = plt.figure(figsize=figsize)
 		sns.set(font_scale=font_scale, palette='colorblind', style='darkgrid', context='paper')
@@ -1208,12 +1207,14 @@ class Aim1_3_Data_Analysis_Results:
 		metrics_list = [EvaluationMetricNames.ACC, EvaluationMetricNames.AUC, EvaluationMetricNames.F1]
 
 		df: pd.DataFrame = self.get_result(metric_name=metric_name) # type: ignore
+		df = df.swaplevel(axis=1, i=1, j=2)
 
 		fig, axes = plt.subplots(nrows=len(workers_list), ncols=len(metrics_list), figsize=figsize, sharex=True, sharey=True, squeeze=True)
 		for i2, metric in enumerate(metrics_list):
-			df_per_nl = df[metric].T.groupby(level=1)
+			# df_per_nl = df[metric].T.groupby(level=1)
 			for i1, nl in enumerate(workers_list):
-				sns.boxplot(data=df_per_nl.get_group(nl), orient='h', ax=axes[i1, i2])
+				# sns.boxplot(data=df_per_nl.get_group(nl).T, orient='h', ax=axes[i1, i2])
+				sns.boxplot(data=df[metric][nl], orient='h', ax=axes[i1, i2])
 
 
 		i1 = 2 if len(workers_list) > 2 else 1
