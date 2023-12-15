@@ -8,5 +8,8 @@
         "**/Thumbs.db": true
     },
     "hide-files.files": [],
-    "editor.inlineSuggest.showToolbar": "always"
+    "editor.inlineSuggest.showToolbar": "always",
+    "debug.console.fontSize": 12,
+    "notebook.output.fontSize": 14,
+    "notebook.output.lineHeight": 0
 }

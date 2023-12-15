@@ -1027,13 +1027,16 @@ class Aim1_3_Data_Analysis_Results:
 			return self.get_evaluation_metrics_for_confidence_scores(metric_name=metric_name, dataset_name=dataset_name, nl=nl)
 
 		elif metric_name == 'weight_strength_relation': # 'df_weight_stuff'
-			value_vars = list(self.RENAME_MAPS.values()) + [MainBenchmarks.TAO]
+			value_vars = list(self.RENAME_MAPS.values()) + [MainBenchmarks.TAO.value]
+			rename_columns = self.RENAME_MAPS
+			rename_columns.update({MainBenchmarks.TAO:MainBenchmarks.TAO.value})
 
 			wwr = pd.DataFrame()
 			for dt in self.config.dataset.datasetNames:
 
 				df = (self.results_all_datasets[dt].weight_strength_relation
-						.rename(columns=self.RENAME_MAPS)
+						.rename(columns=rename_columns)
+						.reset_index()
 						.melt(id_vars=['labelers_strength'], value_vars=value_vars, var_name='Method', value_name='Weight'))
 
 				wwr = pd.concat([wwr, df.assign(dataset_name=dt.value)], axis=0)
@@ -1125,7 +1128,7 @@ class Aim1_3_Data_Analysis_Results:
 
 		index   = pd.MultiIndex.from_product([list(StrategyNames), [ProposedTechniqueNames.PROPOSED_PENALIZED] + list(MainBenchmarks)], names=['strategy', 'technique'])
 
-		columns = pd.MultiIndex.from_product([['ece score', 'brier score loss'], target_list], names=['metric', target_name])
+		columns = pd.MultiIndex.from_product([list(ConfidenceScoreNames), target_list], names=['metric', target_name])
 
 		df_cs   = pd.DataFrame(columns=columns, index=index)
 
@@ -1150,7 +1153,7 @@ class Aim1_3_Data_Analysis_Results:
 		path.mkdir(parents=True, exist_ok=True)
 
 		# Save the plot
-		for suffix in ['png', 'eps', 'svg', 'pdf']:
+		for suffix in ['png', 'pdf']:
 			plt.savefig(path / f'{filename}.{suffix}', format=suffix, dpi=300, bbox_inches='tight')
 
 		# Save the sheet
@@ -1164,7 +1167,10 @@ class Aim1_3_Data_Analysis_Results:
 
 		sns.set( palette='colorblind', style='darkgrid', context='paper', font_scale=font_scale)
 
-		p = sns.lmplot(data=df, legend=True, hue='Method', order=3, legend_out=False, x="labelers_strength", y="Weight", col='dataset_name', col_wrap=3, height=height, aspect=aspect, sharex=True, sharey=True, ci=None)
+		# Create a facet_kws dictionary to pass deprecated arguments
+		facet_kws = {'sharex': True, 'sharey': True, 'legend_out': False}
+
+		p = sns.lmplot(data=df, legend=True, hue='Method', order=3, x="labelers_strength", y="Weight", col='dataset_name', col_wrap=3, height=height, aspect=aspect, ci=None, facet_kws=facet_kws)
 
 		p.set_xlabels(r"Probability Threshold ($\pi_\alpha^{(k)}$)" , fontsize=fontsize)
 		p.set_ylabels(r"Estimated Weight ($\omega_\alpha^{(k)}$)"   , fontsize=fontsize)
@@ -1197,6 +1203,13 @@ class Aim1_3_Data_Analysis_Results:
 
 
 	def figure_metrics_all_datasets_workers(self, workers_list: list[str]=None, figsize=(15, 15), font_scale=1.8, fontsize=20, relative_path='final_figures'):
+		def get_axes(i1, i2):
+			nonlocal axes
+			if len(workers_list) == 1 or len(metrics_list) == 1:
+				return axes[max(i1, i2)]
+			else:
+				return axes[i1, i2]
+
 
 		if workers_list is None:
 			workers_list = [f'NL{i}' for i in self.config.simulation.workers_list]
@@ -1213,16 +1226,16 @@ class Aim1_3_Data_Analysis_Results:
 		for i2, metric in enumerate(metrics_list):
 			# df_per_nl = df[metric].T.groupby(level=1)
 			for i1, nl in enumerate(workers_list):
-				# sns.boxplot(data=df_per_nl.get_group(nl).T, orient='h', ax=axes[i1, i2])
-				sns.boxplot(data=df[metric][nl], orient='h', ax=axes[i1, i2])
+				data = df[metric][nl].rename(columns=lambda c: c.value)
+				# sns.boxplot(data=df_per_nl.get_group(nl).T, orient='h', ax=ax)
+				sns.boxplot(data=data, orient='h', ax=get_axes(i1, i2))
 
-
-		i1 = 2 if len(workers_list) > 2 else 1
+		i1 = 2 if len(workers_list) > 2 else i1
 		for i2, metric in enumerate(metrics_list):
-			axes[i1, i2].set_xlabel(metric, fontsize=fontsize, fontweight='bold', labelpad=20)
+			get_axes(i1, i2).set_xlabel(metric, fontsize=fontsize, fontweight='bold', labelpad=20)
 
 		for i1, nl in enumerate(workers_list):
-			axes[i1, 0].set_ylabel(nl, fontsize=fontsize, fontweight='bold', labelpad=20)
+			get_axes(i1,0).set_ylabel(nl, fontsize=fontsize, fontweight='bold', labelpad=20)
 
 		fig.suptitle('Metrics Over All Datasets', fontsize=int(1.5*fontsize), fontweight='bold')
 		plt.tight_layout()
@@ -1233,50 +1246,47 @@ class Aim1_3_Data_Analysis_Results:
 
 	def figure_F_heatmap(self, metric_name='F_eval_one_dataset_all_labelers', dataset_name:DatasetNames=DatasetNames.IONOSPHERE, nl='NL3', fontsize=20, font_scale=1.8, figsize=(13, 11), relative_path='final_figures'):
 
-		sns.set(font_scale=font_scale, palette='colorblind', style='darkgrid', context='paper')
 
-		# Set labels for the columns
-		if metric_name == 'F_eval_one_dataset_all_labelers':
-			filename  = f'heatmap_F_evals_{dataset_name}_all_labelers'
-			suptitle = f'Confidence Score Evaluation for {dataset_name}'
+		def get_filename_subtitle():
 
-		elif metric_name == 'F_eval_one_worker_all_datasets':
-			filename  = f'heatmap_F_evals_all_datasets_{nl}'
-			suptitle = f'Confidence Score Evaluation for {nl.split("NL")[1]} Workers'
+			if metric_name == 'F_eval_one_dataset_all_labelers':
+				filename  = f'heatmap_F_evals_{dataset_name}_all_labelers'
+				suptitle = f'Confidence Score Evaluation for {dataset_name}'
 
-		else:
-			raise ValueError('metric_name does not exist')
+			elif metric_name == 'F_eval_one_worker_all_datasets':
+				filename  = f'heatmap_F_evals_all_datasets_{nl}'
+				suptitle = f'Confidence Score Evaluation for {nl.split("NL")[1]} Workers'
 
+			else:
+				raise ValueError('metric_name does not exist')
+
+			return filename, suptitle
+
+		def create_heatmap(data, ax, cmap, cbar, title='', ylabel='', xlabel=''):
+			sns.heatmap(data, ax=ax, annot=True, fmt='.2f', cmap=cmap, cbar=cbar, robust=True)
+			ax.set_title(title, fontsize=fontsize, fontweight='bold')
+			ax.set_ylabel(ylabel, fontsize=fontsize, fontweight='bold', labelpad=20)
+			ax.set_xlabel(xlabel)
+
+		def plot(df, filename, subtitle):
+
+			sns.set(font_scale=font_scale, palette='colorblind', style='darkgrid', context='paper')
+			fig, axes = plt.subplots(nrows=2, ncols=2, figsize=figsize, sharex=True, sharey=True, squeeze=True)
+
+			# Create heatmaps in a loop
+			create_heatmap(data=df[ConfidenceScoreNames.ECE].T[StrategyNames.FREQ],  ax=axes[0, 0], cmap='Reds', cbar=False, title=StrategyNames.FREQ.name, ylabel=ConfidenceScoreNames.ECE.name)
+			create_heatmap(data=df[ConfidenceScoreNames.ECE].T[StrategyNames.BETA],  ax=axes[0, 1], cmap='Reds', cbar=True,  title=StrategyNames.BETA.name)
+			create_heatmap(data=df[ConfidenceScoreNames.BRIER].T[StrategyNames.FREQ], ax=axes[1, 0], cmap='Blues', cbar=False, ylabel=ConfidenceScoreNames.BRIER.name)
+			create_heatmap(data=df[ConfidenceScoreNames.BRIER].T[StrategyNames.BETA], ax=axes[1, 1], cmap='Blues', cbar=True)
+
+			fig.suptitle(subtitle, fontsize=int(1.5*fontsize), fontweight='bold')
+			plt.tight_layout()
+
+
+		filename, subtitle = get_filename_subtitle()
 
 		df = self.get_result(metric_name=metric_name, dataset_name=dataset_name, nl=nl).round(3)
-
-
-		fig, axes = plt.subplots(nrows=2, ncols=2, figsize=figsize, sharex=True, sharey=True, squeeze=True) # type: ignore
-
-		# Create the heatmaps
-		sns.heatmap(df['ece score'].T[StrategyNames.FREQ]		, ax=axes[0, 0], annot=True, fmt='.2f', cmap='Reds',  cbar=False, robust=True)
-		sns.heatmap(df['ece score'].T[StrategyNames.BETA]		, ax=axes[0, 1], annot=True, fmt='.2f', cmap='Reds',  cbar=True,  robust=True)
-		sns.heatmap(df['brier score loss'].T[StrategyNames.FREQ], ax=axes[1, 0], annot=True, fmt='.2f', cmap='Blues', cbar=False, robust=True)
-		sns.heatmap(df['brier score loss'].T[StrategyNames.BETA], ax=axes[1, 1], annot=True, fmt='.2f', cmap='Blues', cbar=True,  robust=True)
-
-		# Add a title to each subplot
-		axes[0, 0].set_title(StrategyNames.FREQ.name, fontsize=fontsize, fontweight='bold')
-		axes[0, 1].set_title(StrategyNames.BETA.name, fontsize=fontsize, fontweight='bold')
-
-		# Set labels for the rows
-		axes[0, 0].set_ylabel("ECE"       , fontsize=fontsize, fontweight='bold', labelpad=20)
-		axes[1, 0].set_ylabel("Brier Score", fontsize=fontsize, fontweight='bold', labelpad=20)
-		axes[0, 1].set_ylabel('')
-		axes[1, 1].set_ylabel('')
-
-		axes[1, 0].set_xlabel('')
-		axes[1, 1].set_xlabel('')
-		axes[0, 0].set_xlabel('')
-		axes[0, 1].set_xlabel('')
-
-
-		fig.suptitle(suptitle, fontsize=int(1.5*fontsize), fontweight='bold')
-		plt.tight_layout()
+		plot(df, filename, subtitle)
 
 		self.save_outputs( filename=f'figure_{filename}', relative_path=relative_path, dataframe=df.T )
 
