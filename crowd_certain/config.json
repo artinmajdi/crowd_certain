@@ -24,7 +24,7 @@
   },
   "output": {
     "mode": "calculate",
-    "save": true,
+    "save": false,
     "path": "outputs"
   }
 }

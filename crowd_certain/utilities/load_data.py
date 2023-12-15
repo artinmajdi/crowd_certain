@@ -19,10 +19,11 @@ def aim1_3_read_download_UCI_database(config, dataset_name=''):
     # dataset_path = pathlib.Path( dataset_path ).absolute()
     dataset_path.mkdir( parents=True, exist_ok=True )
 
+    names, files, url = [], [], ''
     def read_raw_names_files():
+        nonlocal names, files, url
 
         # main_url = 'https://archive.ics.uci.edu/ml/machine-learning-databases/'
-        names, files, url = [], [], ''
 
         if dataset_name is DatasetNames.KR_VS_KP:
             names   = [f'a{i}' for i in range(36)] + ['true']
@@ -69,18 +70,16 @@ def aim1_3_read_download_UCI_database(config, dataset_name=''):
             files   = [ 'Index', f'{dataset_name}.data', f'{dataset_name}.names']
             url     = main_url + '/ionosphere/'
 
-        return dataset_name, names, files, url
-
-    dataset, names, files, url = read_raw_names_files()
+    read_raw_names_files()
 
     def download_data():
-        local_path = dataset_path.joinpath( f'UCI_{dataset}' )
+        local_path = dataset_path.joinpath( f'UCI_{dataset_name}' )
         local_path.mkdir(exist_ok=True)
 
         for name in files:
             wget.download(url + name, local_path)
 
-        data_raw = pd.read_csv(local_path.joinpath(f'{dataset}.data'))
+        data_raw = pd.read_csv(local_path.joinpath(f'{dataset_name}.data'))
         return data_raw, []
 
     def separate_train_test(data_raw, train_frac=0.8) -> Dict[str, pd.DataFrame]:
@@ -224,10 +223,10 @@ def aim1_3_read_download_UCI_database(config, dataset_name=''):
 
             return feature_columns
 
-        filepath= dataset_path / f'UCI_{dataset}/{dataset}.data'
+        filepath= dataset_path / f'UCI_{dataset_name}/{dataset_name}.data'
 
-        filepath = filepath.with_suffix('.csv') if dataset == 'biodeg' else filepath
-        delimiter = {'biodeg':';' , 'horse-colic':' '}.get(dataset)
+        filepath = filepath.with_suffix('.csv') if dataset_name == 'biodeg' else filepath
+        delimiter = {'biodeg':';' , 'horse-colic':' '}.get(dataset_name)
         params = {'delimiter': delimiter}
 
         if config.dataset.read_mode == ReadMode.READ:

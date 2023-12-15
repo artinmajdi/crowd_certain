@@ -981,16 +981,19 @@ class Aim1_3_Data_Analysis_Results:
 
 	def save_outputs(self, filename, relative_path, dataframe=None):
 
-		# output path
-		path = self.config.output.path / relative_path / filename
-		path.mkdir(parents=True, exist_ok=True)
+		if self.config.output.save:
 
-		# Save the plot
-		for suffix in ['png', 'pdf']:
-			plt.savefig(path / f'{filename}.{suffix}', format=suffix, dpi=300, bbox_inches='tight')
+			# output path
+			path = self.config.output.path / relative_path / filename
+			path.mkdir(parents=True, exist_ok=True)
 
-		# Save the sheet
-		if dataframe is not None: LoadSaveFile( path / f'{filename}.xlsx' ).dump( dataframe, index=True )
+			# Save the plot
+			for suffix in ['png', 'pdf']:
+				plt.savefig(path / f'{filename}.{suffix}', format=suffix, dpi=300, bbox_inches='tight')
+
+			# Save the sheet
+			if dataframe is not None:
+				LoadSaveFile( path / f'{filename}.xlsx' ).dump( dataframe, index=True )
 
 
 	def figure_weight_quality_relation(self, aspect=1.5, font_scale=1, fontsize=12, relative_path='final_figures', height=4):
@@ -1063,7 +1066,7 @@ class Aim1_3_Data_Analysis_Results:
 				# sns.boxplot(data=df_per_nl.get_group(nl).T, orient='h', ax=ax)
 				sns.boxplot(data=data, orient='h', ax=get_axes(i1, i2))
 
-		i1 = 2 if len(workers_list) > 2 else i1
+		i1 = 2 if len(workers_list) > 2 else len(workers_list)
 		for i2, metric in enumerate(metrics_list):
 			get_axes(i1, i2).set_xlabel(metric, fontsize=fontsize, fontweight='bold', labelpad=20)
 
@@ -1078,7 +1081,6 @@ class Aim1_3_Data_Analysis_Results:
 
 
 	def figure_F_heatmap(self, metric_name='F_eval_one_dataset_all_labelers', dataset_name:DatasetNames=DatasetNames.IONOSPHERE, nl='NL3', fontsize=20, font_scale=1.8, figsize=(13, 11), relative_path='final_figures'):
-
 
 		def get_filename_subtitle():
 
