@@ -144,7 +144,6 @@ class BenchmarkTechniques:
 
 	@staticmethod
 	def wrapper(benchmark_name: OtherBenchmarkNames, test: pd.DataFrame, test_unique: np.ndarray) -> Tuple[OtherBenchmarkNames, np.ndarray]:
-
 		return (benchmark_name, BenchmarkTechniques.get_techniques(benchmark_name=benchmark_name, test=test, test_unique=test_unique))
 
 
@@ -157,14 +156,16 @@ class BenchmarkTechniques:
 	def apply(cls, true_labels, use_parallelization_benchmarks) -> pd.DataFrame:
 		ground_truth = {n: true_labels[n].truth.copy() 				     for n in ['train', 'test']}
 		crowd_labels = {n: true_labels[n].drop(columns=['truth']).copy() for n in ['train', 'test']}
-		BT = cls(crowd_labels=crowd_labels, ground_truth=ground_truth) #.calculate(use_parallelization_benchmarks)
+		return cls(crowd_labels=crowd_labels, ground_truth=ground_truth).calculate(use_parallelization_benchmarks)
 
+
+	def calculate(self, use_parallelization_benchmarks) -> pd.DataFrame:
 		# train    = self.crowd_labels['train']
 		# train_gt = self.ground_truth['train']
-		test: pd.DataFrame = BT.crowd_labels['test']
+		test: pd.DataFrame = self.crowd_labels['test']
 		test_unique: np.ndarray = test.task.unique()
 
-		function = BT.objective_function(test=test, test_unique=test_unique)
+		function = self.objective_function(test=test, test_unique=test_unique)
 
 		if use_parallelization_benchmarks:
 			with multiprocessing.Pool(processes=len(OtherBenchmarkNames)) as pool:
@@ -616,7 +617,6 @@ class AIM1_3:
 
 	@staticmethod
 	def objective_function(config, data, feature_columns):
-		# Return the class's static method
 		return functools.partial(AIM1_3.wrapper, config=config, data=data, feature_columns=feature_columns)
 
 
@@ -635,11 +635,11 @@ class AIM1_3:
 
 				if config.simulation.use_parallelization:
 
-					with multiprocessing.Pool(processes=config.simulation.max_parallel_workers) as pool:
+					with multiprocessing.Pool(processes=min(config.simulation.max_parallel_workers, len(input_list))) as pool:
 						core_results = pool.map(function, input_list)
 
 					# with ProcessPoolExecutor(max_workers=config.simulation.max_parallel_workers) as executor:
-					# 	future_to_seed = {executor.submit(function, {'n_workers': nl, 'seed': seed}): (nl, seed) for nl, seed in input_list}
+					# 	future_to_seed = {executor.submit(function, args): args for args in input_list}
 					# 	core_results = []
 					# 	for future in tqdm(as_completed(future_to_seed), total=len(future_to_seed), desc='Processing n_workers & seeds'):
 					# 		core_results.append(future.result())
