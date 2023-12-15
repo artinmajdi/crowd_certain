@@ -2,10 +2,10 @@ from collections import defaultdict
 import enum
 import multiprocessing
 import pickle
-from concurrent.futures import as_completed, ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
-
+import time
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -59,7 +59,7 @@ class LoadSaveFile:
 		elif self.path.suffix == '.xlsx':
 			file.to_excel(self.path, index=index)
 
-
+# @functools.cache
 class BenchmarkTechniques:
 
 	def __init__(self, crowd_labels, ground_truth): # type: (Dict, Dict) -> None
@@ -70,16 +70,8 @@ class BenchmarkTechniques:
 		for mode in ['train', 'test']:
 			self.crowd_labels[mode] = self.reshape_dataframe_into_this_sdk_format(self.crowd_labels[mode])
 
-
-	def calculate(self) -> pd.DataFrame:
-		""" Apply all benchmarks to the input dataset """
-
-		# train    = self.crowd_labels['train']
-		# train_gt = self.ground_truth['train']
-		test: pd.DataFrame = self.crowd_labels['test' ]
-
-		# Measuring predicted labels for each benchmar technique:
-		test_unique: np.ndarray = test.task.unique()
+	@classmethod
+	def get_techniques(cls, benchmark_name: OtherBenchmarkNames, test: pd.DataFrame, test_unique: np.ndarray):
 
 		def exception_handler(func):
 			def inner_function(*args, **kwargs):
@@ -146,21 +138,50 @@ class BenchmarkTechniques:
 		def DawidSkene():
 			return crowdkit_aggregation.DawidSkene().fit_predict(test)
 
-		aggregated_labels = pd.DataFrame(columns=list(OtherBenchmarkNames), index=test_unique)
-		for m in OtherBenchmarkNames:
-			aggregated_labels[m] = eval(m.value)()
 
-		# aggregated_labels['KOS']            = KOS()
-		# aggregated_labels['MACE']           = MACE()
-		# aggregated_labels['MMSR']           = MMSR()
-		# aggregated_labels['Wawa']           = Wawa()
-		# aggregated_labels['GLAD']           = GLAD()
-		# aggregated_labels['ZeroBasedSkill'] = ZeroBasedSkill()
-		# aggregated_labels['MajorityVote']   = MajorityVote()
-		# aggregated_labels['DawidSkene']     = DawidSkene()
+		return eval(benchmark_name.value)()
 
-		return aggregated_labels
 
+	@staticmethod
+	def wrapper(benchmark_name: OtherBenchmarkNames, test: pd.DataFrame, test_unique: np.ndarray) -> Tuple[OtherBenchmarkNames, np.ndarray]:
+
+		return (benchmark_name, BenchmarkTechniques.get_techniques(benchmark_name=benchmark_name, test=test, test_unique=test_unique))
+
+
+	@staticmethod
+	def objective_function(test, test_unique):
+		return functools.partial(BenchmarkTechniques.wrapper, test=test, test_unique=test_unique)
+
+
+	@classmethod
+	def apply(cls, true_labels, use_parallelization_benchmarks) -> pd.DataFrame:
+		ground_truth = {n: true_labels[n].truth.copy() 				     for n in ['train', 'test']}
+		crowd_labels = {n: true_labels[n].drop(columns=['truth']).copy() for n in ['train', 'test']}
+		BT = cls(crowd_labels=crowd_labels, ground_truth=ground_truth) #.calculate(use_parallelization_benchmarks)
+
+		# train    = self.crowd_labels['train']
+		# train_gt = self.ground_truth['train']
+		test: pd.DataFrame = BT.crowd_labels['test']
+		test_unique: np.ndarray = test.task.unique()
+
+		function = BT.objective_function(test=test, test_unique=test_unique)
+
+		if use_parallelization_benchmarks:
+			with multiprocessing.Pool(processes=len(OtherBenchmarkNames)) as pool:
+				output = pool.map(function, list(OtherBenchmarkNames))
+
+		else:
+			output = [function(benchmark_name=m) for m in OtherBenchmarkNames]
+
+		aggregated_labels = {}
+		for benchmark_name, values in output:
+			aggregated_labels[benchmark_name] = values
+
+		return pd.DataFrame(aggregated_labels) #, index=test_unique)
+
+
+	# def calculate(self, use_parallelization_benchmarks) -> pd.DataFrame:
+	# 	""" Apply all benchmarks to the input dataset """
 
 	@staticmethod
 	def reshape_dataframe_into_this_sdk_format(df_predicted_labels):
@@ -173,7 +194,7 @@ class BenchmarkTechniques:
 		# Separating the ground truth labels from the crowd labels
 		# ground_truth = df_crowd_labels.pop('truth')
 
-		# Stacking all the labelers labels into one column
+		# Stacking all the workers labels into one column
 		df_crowd_labels = df_crowd_labels.stack().reset_index().rename( columns={'level_0': 'task', 'level_1': 'worker', 0: 'label'})
 
 		# Reordering the columns to make it similar to crowd-kit examples
@@ -181,13 +202,6 @@ class BenchmarkTechniques:
 
 		return df_crowd_labels  # , ground_truth
 
-
-	@classmethod
-	def apply(cls, true_labels) -> pd.DataFrame:
-		ground_truth = {n: true_labels[n].truth.copy() 				     for n in ['train', 'test']}
-		crowd_labels = {n: true_labels[n].drop(columns=['truth']).copy() for n in ['train', 'test']}
-		ABTC = cls(crowd_labels=crowd_labels, ground_truth=ground_truth)
-		return ABTC.calculate()
 
 
 @dataclass
@@ -197,8 +211,8 @@ class ResultsType:
 	aggregated_labels: pd.DataFrame
 	weights_proposed : pd.DataFrame
 	weights_Tao      : pd.DataFrame
-	labelers_strength: pd.DataFrame
-	n_labelers       : int
+	workers_strength: pd.DataFrame
+	n_workers       : int
 	metrics 		 : pd.DataFrame
 
 
@@ -212,33 +226,14 @@ class ResultsComparisonsType:
 
 class AIM1_3:
 
-	def __init__(self, config, data, feature_columns, n_labelers=13):
-
-		self.config            = config
-		self.data             = data
-		self.feature_columns  = feature_columns
-		self.n_labelers       = n_labelers
-		self.weights_Tao_mean = None
-		self.seed             = None
-		self.prob_weighted    = None
-		self.accuracy         = None
-		self.true_labels      = None
-		self.uncertainty_all  = None
-		self.yhat_benchmark_classifier = None
-		self.yhat_proposed_classifier  = None
-		self.predicted_labels_all      = None
-
-		self.F                = {}
-		self.weights_Tao       = pd.DataFrame()
-		self.weights_proposed  = pd.DataFrame()
-		self.labelers_strength = pd.DataFrame()
-
+	def __init__(self):
+		pass
 
 	@staticmethod
-	def get_accuracy(aggregated_labels, n_labelers, delta_benchmark, truth):
+	def get_accuracy(aggregated_labels, n_workers, delta_benchmark, truth):
 		""" Measuring accuracy. This result in the same values as if I had measured a weighted majority voting using the "weights" multiplied by "delta" which is the binary predicted labels """
 
-		accuracy = pd.DataFrame(index=[n_labelers])
+		accuracy = pd.DataFrame(index=[n_workers])
 		for methods in [ProposedTechniqueNames, MainBenchmarks, OtherBenchmarkNames]:
 			for m in methods:
 				accuracy[m] = ((aggregated_labels[m] >= 0.5) == truth).mean(axis=0)
@@ -248,29 +243,31 @@ class AIM1_3:
 		return accuracy
 
 
-	@staticmethod
-	def core_measurements(data, n_labelers, config, feature_columns) -> ResultsType:
+	@classmethod
+	def core_measurements(cls, data, n_workers, config, feature_columns, seed, use_parallelization_benchmarks=False) -> ResultsType:
 		""" Final pred labels & uncertainties for proposed technique
-				dataframe = preds[train, test] * [mv]              <=> {rows: samples,  columns: labelers}
-				dataframe = uncertainties[train, test]  {rows: samples,  columns: labelers}
+				dataframe = preds[train, test] * [mv]              <=> {rows: samples,  columns: workers}
+				dataframe = uncertainties[train, test]  {rows: samples,  columns: workers}
 
 			Final pred labels for proposed benchmarks
-				dataframe = preds[train, test] * [simulation_0]    <=> {rows: samples,  columns: labelers} """
+				dataframe = preds[train, test] * [simulation_0]    <=> {rows: samples,  columns: workers}
+
+			Note: A separate boolean flag is used for use_parallelization_benchmarks. This will ensure we only apply parallelization when called through worker_weight_strength_relation function """
 
 		def aim1_3_meauring_probs_uncertainties():
 			""" Final pred labels & uncertainties for proposed technique
-					dataframe = preds[train, test] * [mv]              <=> {rows: samples,  columns: labelers}
-					dataframe = uncertainties[train, test]  {rows: samples,  columns: labelers}
+					dataframe = preds[train, test] * [mv]              <=> {rows: samples,  columns: workers}
+					dataframe = uncertainties[train, test]  {rows: samples,  columns: workers}
 
 				Final pred labels for proposed benchmarks
-					dataframe = preds[train, test] * [simulation_0]    <=> {rows: samples,  columns: labelers} """
+					dataframe = preds[train, test] * [simulation_0]    <=> {rows: samples,  columns: workers} """
 
 			def getting_noisy_manual_labels_for_each_worker(true, l_strength: float=0.5, seed_num: int=1):
 
 				# setting the random seed
 				# np.random.seed(seed_num)
 
-				# number of samples and labelers/workers
+				# number of samples and workers/workers
 				num_samples = true.shape[0]
 
 				# finding a random number for each instance
@@ -279,7 +276,7 @@ class AIM1_3:
 				# samples that will have an inaccurate true label
 				false_samples = true_label_assignment_prob < 1 - l_strength
 
-				# measuring the new labels for each labeler/worker
+				# measuring the new labels for each worker/worker
 				worker_true = true > 0.5
 				worker_true[false_samples] = ~ worker_true[false_samples]
 
@@ -287,13 +284,13 @@ class AIM1_3:
 
 			def assigning_strengths_randomly_to_each_worker():
 
-				labelers_names = [f'labeler_{j}' for j in range(n_labelers)]
+				workers_names = [f'worker_{j}' for j in range(n_workers)]
 
-				labelers_strength_array = np.random.uniform(low=config.simulation.low_dis, high=config.simulation.high_dis, size=n_labelers)
+				workers_strength_array = np.random.uniform(low=config.simulation.low_dis, high=config.simulation.high_dis, size=n_workers)
 
-				return pd.DataFrame({'labelers_strength': labelers_strength_array}, index=labelers_names)
+				return pd.DataFrame({'workers_strength': workers_strength_array}, index=workers_names)
 
-			def looping_over_all_labelers(labelers_strength):
+			def looping_over_all_workers(workers_strength):
 
 				""" Looping over all simulations. this is to measure uncertainties """
 
@@ -301,7 +298,7 @@ class AIM1_3:
 				truth = { 'train': pd.DataFrame(), 'test': pd.DataFrame() }
 				uncertainties = { 'train': pd.DataFrame(), 'test': pd.DataFrame() }
 
-				for LB_index, LB in enumerate(labelers_strength.index):
+				for LB_index, LB in enumerate(workers_strength.index):
 
 					# Initializationn
 					for mode in ['train', 'test']:
@@ -311,11 +308,11 @@ class AIM1_3:
 					# Extracting the simulated noisy manual labels based on the worker's strength
 					truth['train'][LB] = getting_noisy_manual_labels_for_each_worker( seed_num=0,  # LB_index,
 																					  true=data['train'].true.values,
-																					  l_strength=labelers_strength.T[LB].values )
+																					  l_strength=workers_strength.T[LB].values )
 
 					truth['test'][LB] = getting_noisy_manual_labels_for_each_worker( seed_num=1,  # LB_index,
 																					 true=data['test'].true.values,
-																					 l_strength=labelers_strength.T[LB].values )
+																					 l_strength=workers_strength.T[LB].values )
 
 					SIMULATION_TYPE = 'random_state'
 
@@ -364,7 +361,7 @@ class AIM1_3:
 						# predicted probability of each class after MV over all simulations
 						predicted_labels_all_sims[mode][LB]['mv'] = ( predicted_labels_all_sims[mode][LB].mean(axis=1) > 0.5)
 
-						# uncertainties for each labeler over all simulations
+						# uncertainties for each worker over all simulations
 						# TODO: use different uncertainty measurement techniques for the SSIAI paper
 						uncertainties[mode][LB] = predicted_labels_all_sims[mode][LB].std( axis=1 )
 
@@ -372,46 +369,46 @@ class AIM1_3:
 				preds = { 'train': {}, 'test': {} }
 				for mode in ['train', 'test']:
 
-					# reversing the order of simulations and labelers. NOTE: for the final experiment I should use simulation_0. if I use the mv, then because the augmented truths keeps changing in each simulation, then with enough simulations, I'll end up witht perfect labelers.
+					# reversing the order of simulations and workers. NOTE: for the final experiment I should use simulation_0. if I use the mv, then because the augmented truths keeps changing in each simulation, then with enough simulations, I'll end up witht perfect workers.
 					for i in range(config.simulation.num_simulations + 1):
 
 						SM = f'simulation_{i}' if i < config.simulation.num_simulations else 'mv'
 
 						preds[mode][SM] = pd.DataFrame()
-						for LB in [f'labeler_{j}' for j in range(n_labelers)]:
+						for LB in [f'worker_{j}' for j in range(n_workers)]:
 							preds[mode][SM][LB] = predicted_labels_all_sims[mode][LB][SM]
 
 				return truth, uncertainties, preds
 
-			def adding_accuracy_for_each_labeler(labelers_strength, predicted_labels, true_labels):
+			def adding_accuracy_for_each_worker(workers_strength, predicted_labels, true_labels):
 
-				labelers_strength['accuracy-test-classifier'] = 0.0
-				labelers_strength['accuracy-test'] = 0.0
+				workers_strength['accuracy-test-classifier'] = 0.0
+				workers_strength['accuracy-test'] = 0.0
 
-				for i in range(n_labelers):
-					LB = f'labeler_{i}'
+				for i in range(n_workers):
+					LB = f'worker_{i}'
 
 					# accuracy of classifier in simulation_0
-					labelers_strength.loc[LB, 'accuracy-test-classifier'] = ( predicted_labels['test']['simulation_0'][LB] == true_labels['test'].truth).mean()
+					workers_strength.loc[LB, 'accuracy-test-classifier'] = ( predicted_labels['test']['simulation_0'][LB] == true_labels['test'].truth).mean()
 
-					# accuracy of noisy true labels for each labeler
-					labelers_strength.loc[LB, 'accuracy-test'] 		     = ( true_labels['test'][LB] == true_labels['test'].truth).mean()
+					# accuracy of noisy true labels for each worker
+					workers_strength.loc[LB, 'accuracy-test'] 		     = ( true_labels['test'][LB] == true_labels['test'].truth).mean()
 
-				return labelers_strength
+				return workers_strength
 
-			# setting a random strength for each labeler/worker
+			# setting a random strength for each worker/worker
 			ls = assigning_strengths_randomly_to_each_worker()
 
-			true_labels, uncertainty, predicted_labels = looping_over_all_labelers(labelers_strength=ls)
+			true_labels, uncertainty, predicted_labels = looping_over_all_workers(workers_strength=ls)
 
-			labelers_strength = adding_accuracy_for_each_labeler(labelers_strength=ls, predicted_labels=predicted_labels, true_labels=true_labels)
+			workers_strength = adding_accuracy_for_each_worker(workers_strength=ls, predicted_labels=predicted_labels, true_labels=true_labels)
 
-			return predicted_labels, uncertainty, true_labels, labelers_strength
+			return predicted_labels, uncertainty, true_labels, workers_strength
 
 		def aim1_3_measuring_proposed_weights(predicted_labels, predicted_uncertainty):
 
-			# weights       : n_labelers thresh_technique num_methods
-			# probs_weighted : num_samples thresh_technique n_labelers
+			# weights       : n_workers thresh_technique num_methods
+			# probs_weighted : num_samples thresh_technique n_workers
 
 			# To-Do: This is the part where I should measure the prob_mv_binary for different # of workers instead of all of them
 			prob_mv_binary = predicted_labels.mean(axis=1) > 0.5
@@ -445,15 +442,15 @@ class AIM1_3:
 		def measuring_Tao_weights_based_on_classifier_labels(delta, noisy_true_labels):
 			"""
 				tau          : 1 thresh_technique 1
-				weights_Tao  : num_samples thresh_technique n_labelers
-				W_hat_Tao    : num_samples thresh_technique n_labelers
+				weights_Tao  : num_samples thresh_technique n_workers
+				W_hat_Tao    : num_samples thresh_technique n_workers
 				z            : num_samples thresh_technique 1
 				gamma        : num_samples thresh_technique 1
 			"""
 
 			tau = (delta == noisy_true_labels).mean(axis=0)
 
-			# number of labelers
+			# number of workers
 			M = len(delta.columns)
 
 			# number of true and false labels for each class and sample
@@ -471,15 +468,15 @@ class AIM1_3:
 		def measuring_Tao_weights_based_on_actual_labels(delta, noisy_true_labels):
 			"""
 				tau          : 1 thresh_technique 1
-				weights_Tao  : num_samples thresh_technique n_labelers
-				W_hat_Tao    : num_samples thresh_technique n_labelers
+				weights_Tao  : num_samples thresh_technique n_workers
+				W_hat_Tao    : num_samples thresh_technique n_workers
 				z            : num_samples thresh_technique 1
 				gamma        : num_samples thresh_technique 1
 			"""
 
 			tau = (delta == noisy_true_labels).mean(axis=0)
 
-			# number of labelers
+			# number of workers
 			M = len(noisy_true_labels.columns)
 
 			# number of true and false labels for each class and sample
@@ -511,7 +508,7 @@ class AIM1_3:
 
 			return metrics
 
-		def measuring_nu_and_confidence_score(n_labelers, yhat_proposed_classifier, workers_labels, weights_proposed, weights_Tao) -> Tuple[Dict[StrategyNames, Dict[enum.Enum, pd.DataFrame]], pd.DataFrame]:
+		def measuring_nu_and_confidence_score(n_workers, yhat_proposed_classifier, workers_labels, weights_proposed, weights_Tao) -> Tuple[Dict[StrategyNames, Dict[enum.Enum, pd.DataFrame]], pd.DataFrame]:
 
 			def get_pred_and_weights(method_name: ProposedTechniqueNames):
 				if method_name in ProposedTechniqueNames:
@@ -519,10 +516,10 @@ class AIM1_3:
 					return yhat_proposed_classifier, weights_proposed[method_name]
 
 				elif method_name is MainBenchmarks.TAO:
-					return workers_labels, weights_Tao / n_labelers
+					return workers_labels, weights_Tao / n_workers
 
 				elif method_name is MainBenchmarks.SHENG:
-					return workers_labels, pd.DataFrame(1 / n_labelers, index=weights_Tao.index, columns=weights_Tao.columns)
+					return workers_labels, pd.DataFrame(1 / n_workers, index=weights_Tao.index, columns=weights_Tao.columns)
 
 				raise ValueError(f'Unknown method name: {method_name}')
 
@@ -541,12 +538,12 @@ class AIM1_3:
 					# F[out['P_pos'] < out['P_neg']] = out['P_neg'][out['P_pos'] < out['P_neg']]
 
 				elif conf_strategy == StrategyNames.BETA:
-					out['l_alpha'] = 1 + out['P_pos'] * n_labelers
-					out['u_beta']  = 1 + out['P_neg'] * n_labelers
+					out['l_alpha'] = 1 + out['P_pos'] * n_workers
+					out['u_beta']  = 1 + out['P_neg'] * n_workers
 
 					out['k'] = out['l_alpha'] - 1
 
-					# This seems to be equivalent to n_labelers + 1
+					# This seems to be equivalent to n_workers + 1
 					out['n'] = ((out['l_alpha'] + out['u_beta']) - 1) #.astype(int)
 					# k = l_alpha.floordiv(1)
 					# n = (l_alpha+u_beta).floordiv(1) - 1
@@ -578,8 +575,11 @@ class AIM1_3:
 
 			return F, aggregated_labels
 
+		# Setting the random seed
+		np.random.seed(seed + 1)
 
-		predicted_labels_all, uncertainty_all, true_labels, labelers_strength = aim1_3_meauring_probs_uncertainties()
+		# calculating uncertainty and predicted probability values
+		predicted_labels_all, uncertainty_all, true_labels, workers_strength = aim1_3_meauring_probs_uncertainties()
 
 		yhat_proposed_classifier  = predicted_labels_all['test']['mv'          ]
 		yhat_benchmark_classifier = predicted_labels_all['test']['simulation_0']
@@ -592,35 +592,32 @@ class AIM1_3:
 
 		workers_labels = true_labels['test'].drop(columns=['truth'])
 
-		F, aggregated_labels = measuring_nu_and_confidence_score(n_labelers=n_labelers, workers_labels=workers_labels, yhat_proposed_classifier=yhat_proposed_classifier, weights_proposed=weights_proposed, weights_Tao=weights_Tao)
+		F, aggregated_labels = measuring_nu_and_confidence_score(n_workers=n_workers, workers_labels=workers_labels, yhat_proposed_classifier=yhat_proposed_classifier, weights_proposed=weights_proposed, weights_Tao=weights_Tao)
 
 		# Get the results for other benchmarks
-		aggregated_labels_benchmarks = BenchmarkTechniques.apply(true_labels)
+		aggregated_labels_benchmarks = BenchmarkTechniques.apply(true_labels=true_labels, use_parallelization_benchmarks=use_parallelization_benchmarks)
+
 		aggregated_labels = pd.concat( [aggregated_labels, aggregated_labels_benchmarks.copy()], axis=1)
 
 		# Measuring the metrics
 		metrics = get_AUC_ACC_F1(aggregated_labels=aggregated_labels, truth=true_labels['test'].truth)
 
-		# merge labelers_strength and weights
+		# merge workers_strength and weights
 		weights_Tao_mean  = weights_Tao.mean().to_frame().rename(columns={0: MainBenchmarks.TAO})
-		labelers_strength = pd.concat( [labelers_strength, weights_proposed * n_labelers, weights_Tao_mean], axis=1)
+		workers_strength = pd.concat( [workers_strength, weights_proposed * n_workers, weights_Tao_mean], axis=1)
 
-		return ResultsType(true_labels=true_labels, labelers_strength=labelers_strength, F=F, aggregated_labels=aggregated_labels, weights_proposed=weights_proposed, weights_Tao=weights_Tao, n_labelers=n_labelers, metrics=metrics)
+		return ResultsType(true_labels=true_labels, workers_strength=workers_strength, F=F, aggregated_labels=aggregated_labels, weights_proposed=weights_proposed, weights_Tao=weights_Tao, n_workers=n_workers, metrics=metrics)
 
 
-	def get_core_measurements(self, seed=0) -> ResultsType:
-		# Setting the random seed
-		self.seed = seed
-		np.random.seed(seed + 1)
-		params = {n: getattr(self, n) for n in ['data', 'n_labelers','config', 'feature_columns']}
-		return AIM1_3.core_measurements(**params)
+	@staticmethod
+	def wrapper(args: dict[str, Any], config, data, feature_columns) -> Tuple[dict[str, Any], ResultsType]:
+		return args, AIM1_3.core_measurements(data=data, n_workers=args['nl'], config=config, feature_columns=feature_columns, seed=args['seed'], use_parallelization_benchmarks=False)
 
 
 	@staticmethod
 	def objective_function(config, data, feature_columns):
-		def wrapper(args: dict[str, Any]) -> Tuple[dict[str, Any], ResultsType]:
-			return args, AIM1_3(config=config, n_labelers=args['n_labelers'], data=data, feature_columns=feature_columns).get_core_measurements(args['seed'])
-		return wrapper
+		# Return the class's static method
+		return functools.partial(AIM1_3.wrapper, config=config, data=data, feature_columns=feature_columns)
 
 
 	@classmethod
@@ -628,64 +625,45 @@ class AIM1_3:
 
 		def get_outputs(config, data=None, feature_columns=None) -> Dict[str, List[ResultsType]]:
 
-			def get_core_results_not_parallel():
-				outputs = {}
-				for nl in tqdm(config.simulation.workers_list, desc='looping through different # labelers'):
-					aim1_3 = AIM1_3(config=config, n_labelers=nl, data=data, feature_columns=feature_columns)
+			def calculate():
 
-					outputs[f'NL{nl}'] = []
-					for seed in range(config.simulation.num_seeds):
-						outputs[f'NL{nl}'].append(aim1_3.get_core_measurements(seed=seed))
+				input_list = [{'nl':nl, 'seed':seed} for nl in config.simulation.workers_list for seed in range(config.simulation.num_seeds)]
 
-				return outputs
-
-			def get_core_results_parallel():
-
-				input_list = itertools.product(config.simulation.workers_list, list(range(config.simulation.num_seeds)))
 				function = cls.objective_function(config=config, data=data, feature_columns=feature_columns)
 
-				with ThreadPoolExecutor(max_workers=config.simulation.max_parallel_workers) as executor:
-					future_to_seed = {executor.submit(function, {'n_labelers': nl, 'seed': seed}): (nl, seed) for nl, seed in input_list}
-
-					core_results = []
-					for future in tqdm(as_completed(future_to_seed), total=len(future_to_seed), desc='Processing n_workers & seeds'):
-						core_results.append(future.result())
-
-					return core_results
-
-			# def process_nl(nl):
-			# 	aim1_3_instance = AIM1_3(config=config, n_labelers=nl, data=data, feature_columns=feature_columns)
-			# 	return f'NL{nl}', get_core_results_parallel(aim1_3_instance)
-
-			path = config.output.path / 'outputs' / f'{config.dataset.dataset_name}.pkl'
-
-			if config.output.mode is OutputModes.LOAD_LOCAL:
-				return LoadSaveFile(path).load()
-
-			elif config.output.mode is OutputModes.CALCULATE:
+				outputs = {f'NL{nl}':np.full((config.simulation.num_seeds), np.nan).tolist()  for nl in config.simulation.workers_list}
 
 				if config.simulation.use_parallelization:
 
-					outputs = {f'NL{nl}':np.full((config.simulation.num_seeds), np.nan).tolist()  for nl in config.simulation.workers_list}
-					# with ThreadPoolExecutor() as executor:
-					# 	futures = [executor.submit(process_nl, nl) for nl in config.simulation.workers_list]
-					# 	for future in tqdm(as_completed(futures), total=len(futures), desc='Processing labelers'):
-					# 		nl, result = future.result()
-					# 		outputs[nl] = result
-					core_results = get_core_results_parallel()
+					with multiprocessing.Pool(processes=config.simulation.max_parallel_workers) as pool:
+						core_results = pool.map(function, input_list)
 
-					for args, values in core_results:
-						outputs[f'NL{args["n_labelers"]}'][args['seed']] = values
+					# with ProcessPoolExecutor(max_workers=config.simulation.max_parallel_workers) as executor:
+					# 	future_to_seed = {executor.submit(function, {'n_workers': nl, 'seed': seed}): (nl, seed) for nl, seed in input_list}
+					# 	core_results = []
+					# 	for future in tqdm(as_completed(future_to_seed), total=len(future_to_seed), desc='Processing n_workers & seeds'):
+					# 		core_results.append(future.result())
 
 				else:
-					outputs = get_core_results_not_parallel()
+					core_results = [function(args) for args in input_list]
+
+				for args, values in core_results:
+					outputs[f'NL{args["nl"]}'][args['seed']] = values
+
+				return outputs
+
+			path = config.output.path / 'outputs' / f'{config.dataset.dataset_name}.pkl'
+
+			if config.output.mode is OutputModes.CALCULATE:
+				outputs = calculate()
 
 				if config.output.save:
 					LoadSaveFile(path).dump(outputs)
 
-				return outputs
+			else:
+				outputs = LoadSaveFile(path).load()
 
-			return None  # type: ignore
+			return outputs
 
 		def get_outputs_old(config, data=None, feature_columns=None) -> Dict[str, List[ResultsType]]:
 
@@ -706,8 +684,8 @@ class AIM1_3:
 			elif config.output.mode is OutputModes.CALCULATE:
 
 				outputs = {}
-				for nl in tqdm(config.simulation.workers_list, desc='looping through different # labelers'):
-					aim1_3 = AIM1_3(config=config, n_labelers=nl, data=data, feature_columns=feature_columns)
+				for nl in tqdm(config.simulation.workers_list, desc='looping through different # workers'):
+					aim1_3 = AIM1_3(config=config, n_workers=nl, data=data, feature_columns=feature_columns)
 
 					# Get the core measurements for all seeds
 					if config.simulation.use_parallelization:
@@ -784,24 +762,21 @@ class AIM1_3:
 
 			raise ValueError(f'Unknown config.output.mode: {config.output.mode}')
 
-		def worker_weight_strength_relation(config, data, feature_columns, seed=0, n_labelers=20) -> pd.DataFrame:
+		def worker_weight_strength_relation(config, data, feature_columns, seed=0, n_workers=10) -> pd.DataFrame:
 
-			np.random.seed(seed + 1)
 			metric_name = 'weight_strength_relation'
 			path_main = config.output.path / metric_name / config.dataset.dataset_name.value
 
 			if config.output.mode is OutputModes.CALCULATE:
-				df = AIM1_3.core_measurements(n_labelers=n_labelers, config=config, data=data, feature_columns=feature_columns).labelers_strength.set_index('labelers_strength').sort_index()
+				df = AIM1_3.core_measurements(n_workers=n_workers, config=config, data=data, feature_columns=feature_columns, seed=seed, use_parallelization_benchmarks=config.simulation.use_parallelization).workers_strength.set_index('workers_strength').sort_index()
 
 				if config.output.save:
 					LoadSaveFile(path_main / f'{metric_name}.xlsx').dump(df, index=True)
 
 				return df
 
-			elif config.output.mode is OutputModes.LOAD_LOCAL:
+			else:
 				return LoadSaveFile(path_main / f'{metric_name}.xlsx').load(header=0)
-
-			raise ValueError(f'Unknown outputs_mode: {config.output.mode}')
 
 
 		np.random.seed(0)
@@ -817,7 +792,7 @@ class AIM1_3:
 		findings_confidence_score = get_confidence_scores(outputs=outputs, config=config)
 
 		# measuring the worker strength weight relationship for proposed and Tao
-		weight_strength_relation = worker_weight_strength_relation(config=config, data=data, feature_columns=feature_columns, seed=0, n_labelers=20)
+		weight_strength_relation = worker_weight_strength_relation(config=config, data=data, feature_columns=feature_columns, seed=0, n_workers=10)
 
 		return ResultsComparisonsType(weight_strength_relation=weight_strength_relation, findings_confidence_score=findings_confidence_score, outputs=outputs, config=config)
 
@@ -872,7 +847,7 @@ class Aim1_3_Data_Analysis_Results:
 			df['truth'] = self.results_all_datasets[dataset_name].outputs[nl][seed_ix].true_labels[data_mode].truth
 			return df
 
-		elif metric_name in ['F_eval_one_dataset_all_labelers', 'F_eval_one_worker_all_datasets']:
+		elif metric_name in ['F_eval_one_dataset_all_workers', 'F_eval_one_worker_all_datasets']:
 			return self.get_evaluation_metrics_for_confidence_scores(metric_name=metric_name, dataset_name=dataset_name, nl=nl)
 
 		elif metric_name == 'weight_strength_relation': # 'df_weight_stuff'
@@ -886,7 +861,7 @@ class Aim1_3_Data_Analysis_Results:
 				df = (self.results_all_datasets[dt].weight_strength_relation
 						.rename(columns=rename_columns)
 						.reset_index()
-						.melt(id_vars=['labelers_strength'], value_vars=value_vars, var_name='Method', value_name='Weight'))
+						.melt(id_vars=['workers_strength'], value_vars=value_vars, var_name='Method', value_name='Weight'))
 
 				wwr = pd.concat([wwr, df.assign(dataset_name=dt.value)], axis=0)
 
@@ -932,7 +907,7 @@ class Aim1_3_Data_Analysis_Results:
 				return df
 
 
-	def get_evaluation_metrics_for_confidence_scores(self, metric_name='F_eval_one_dataset_all_labelers', dataset_name: DatasetNames=DatasetNames.IONOSPHERE, nl='NL3'):
+	def get_evaluation_metrics_for_confidence_scores(self, metric_name='F_eval_one_dataset_all_workers', dataset_name: DatasetNames=DatasetNames.IONOSPHERE, nl='NL3'):
 
 		from sklearn.metrics import brier_score_loss
 
@@ -963,9 +938,9 @@ class Aim1_3_Data_Analysis_Results:
 			ece = np.sum(np.abs(accuracies - confidences) * confidences)
 			return ece
 
-		if metric_name == 'F_eval_one_dataset_all_labelers':
+		if metric_name == 'F_eval_one_dataset_all_workers':
 			target_list = [f'NL{x}' for x in self.config.simulation.workers_list]
-			target_name = 'n_labelers'
+			target_name = 'n_workers'
 			get_params = lambda i: dict(nl=i, dataset_name=dataset_name)
 
 		elif metric_name == 'F_eval_one_worker_all_datasets':
@@ -1024,7 +999,7 @@ class Aim1_3_Data_Analysis_Results:
 		# Create a facet_kws dictionary to pass deprecated arguments
 		facet_kws = {'sharex': True, 'sharey': True, 'legend_out': False}
 
-		p = sns.lmplot(data=df, legend=True, hue='Method', order=3, x="labelers_strength", y="Weight", col='dataset_name', col_wrap=3, height=height, aspect=aspect, ci=None, facet_kws=facet_kws)
+		p = sns.lmplot(data=df, legend=True, hue='Method', order=3, x="workers_strength", y="Weight", col='dataset_name', col_wrap=3, height=height, aspect=aspect, ci=None, facet_kws=facet_kws)
 
 		p.set_xlabels(r"Probability Threshold ($\pi_\alpha^{(k)}$)" , fontsize=fontsize)
 		p.set_ylabels(r"Estimated Weight ($\omega_\alpha^{(k)}$)"   , fontsize=fontsize)
@@ -1098,12 +1073,12 @@ class Aim1_3_Data_Analysis_Results:
 		self.save_outputs( filename=f'figure_{metric_name}', relative_path=relative_path, dataframe=df )
 
 
-	def figure_F_heatmap(self, metric_name='F_eval_one_dataset_all_labelers', dataset_name:DatasetNames=DatasetNames.IONOSPHERE, nl='NL3', fontsize=20, font_scale=1.8, figsize=(13, 11), relative_path='final_figures'):
+	def figure_F_heatmap(self, metric_name='F_eval_one_dataset_all_workers', dataset_name:DatasetNames=DatasetNames.IONOSPHERE, nl='NL3', fontsize=20, font_scale=1.8, figsize=(13, 11), relative_path='final_figures'):
 
 		def get_filename_subtitle():
 
-			if metric_name == 'F_eval_one_dataset_all_labelers':
-				filename  = f'heatmap_F_evals_{dataset_name}_all_labelers'
+			if metric_name == 'F_eval_one_dataset_all_workers':
+				filename  = f'heatmap_F_evals_{dataset_name}_all_workers'
 				suptitle = f'Confidence Score Evaluation for {dataset_name}'
 
 			elif metric_name == 'F_eval_one_worker_all_datasets':
@@ -1201,7 +1176,7 @@ class AIM1_3_Plot:
 		xnew, y_smooth = AIM1_3_Plot.data_interpolation(x=x, y=y, smooth=smooth, interpolation_pt_count=interpolation_pt_count)
 
 		self.weight_strength_relation_interpolated = pd.DataFrame(y_smooth, columns=columns, index=xnew)
-		self.weight_strength_relation_interpolated.index.name = 'labelers_strength'
+		self.weight_strength_relation_interpolated.index.name = 'workers_strength'
 
 		plt.plot(xnew, y_smooth)
 		self._show_markers(show_markers=show_markers, columns=columns, x=x, y=y)

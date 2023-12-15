@@ -77,7 +77,7 @@ class OutputSettings(BaseModel):
 
 
 class SimulationSettings(BaseModel):
-	nlabelers_min_max   : list[int] = [3,8]
+	n_workers_min_max   : list[int] = [3,8]
 	high_dis            : float       = 1
 	low_dis             : float       = 0.4
 	num_simulations     : int         = 10
@@ -87,7 +87,7 @@ class SimulationSettings(BaseModel):
 
 	@property
 	def workers_list(self):
-		return list(range(*self.nlabelers_min_max))
+		return list(range(*self.n_workers_min_max))
 
 
 

@@ -98,7 +98,7 @@ class StrategyNames(enum.Enum):
 
 @members
 class ConfidenceScoreNames(enum.Enum):
-	ECE = 'ece score'
+	ECE   = 'ece score'
 	BRIER = 'brier score loss'
 
 def main():
