@@ -1,3 +1,4 @@
+from collections import defaultdict
 import enum
 import multiprocessing
 import pickle
@@ -15,6 +16,8 @@ from scipy.interpolate import make_interp_spline
 from scipy.special import bdtrc
 from sklearn import ensemble as sk_ensemble, metrics as sk_metrics
 from tqdm import tqdm
+import functools
+import itertools
 
 from crowd_certain.utilities import load_data
 from crowd_certain.utilities.params import ConfidenceScoreNames, DatasetNames, EvaluationMetricNames, MainBenchmarks, \
@@ -197,7 +200,6 @@ class ResultsType:
 	labelers_strength: pd.DataFrame
 	n_labelers       : int
 	metrics 		 : pd.DataFrame
-
 
 
 @dataclass
@@ -614,6 +616,13 @@ class AIM1_3:
 		return AIM1_3.core_measurements(**params)
 
 
+	@staticmethod
+	def objective_function(config, data, feature_columns):
+		def wrapper(args: dict[str, Any]) -> Tuple[dict[str, Any], ResultsType]:
+			return args, AIM1_3(config=config, n_labelers=args['n_labelers'], data=data, feature_columns=feature_columns).get_core_measurements(args['seed'])
+		return wrapper
+
+
 	@classmethod
 	def calculate_one_dataset(cls, config: 'Settings', dataset_name: DatasetNames=DatasetNames.IONOSPHERE) -> ResultsComparisonsType:
 
@@ -630,20 +639,23 @@ class AIM1_3:
 
 				return outputs
 
-			def do_get_core_measurements(aim1_3_instance, seed):
-				return aim1_3_instance.get_core_measurements(seed=seed)
+			def get_core_results_parallel():
 
-			def get_core_results_parallel(aim1_3_instance) -> List[ResultsType]:
+				input_list = itertools.product(config.simulation.workers_list, list(range(config.simulation.num_seeds)))
+				function = cls.objective_function(config=config, data=data, feature_columns=feature_columns)
+
 				with ThreadPoolExecutor(max_workers=config.simulation.max_parallel_workers) as executor:
-					future_to_seed = {executor.submit(do_get_core_measurements, aim1_3_instance, seed): seed for seed in range(config.simulation.num_seeds)}
+					future_to_seed = {executor.submit(function, {'n_labelers': nl, 'seed': seed}): (nl, seed) for nl, seed in input_list}
+
 					core_results = []
-					for future in tqdm(as_completed(future_to_seed), total=len(future_to_seed), desc='Processing seeds'):
+					for future in tqdm(as_completed(future_to_seed), total=len(future_to_seed), desc='Processing n_workers & seeds'):
 						core_results.append(future.result())
+
 					return core_results
 
-			def process_nl(nl):
-				aim1_3_instance = AIM1_3(config=config, n_labelers=nl, data=data, feature_columns=feature_columns)
-				return f'NL{nl}', get_core_results_parallel(aim1_3_instance)
+			# def process_nl(nl):
+			# 	aim1_3_instance = AIM1_3(config=config, n_labelers=nl, data=data, feature_columns=feature_columns)
+			# 	return f'NL{nl}', get_core_results_parallel(aim1_3_instance)
 
 			path = config.output.path / 'outputs' / f'{config.dataset.dataset_name}.pkl'
 
@@ -653,12 +665,18 @@ class AIM1_3:
 			elif config.output.mode is OutputModes.CALCULATE:
 
 				if config.simulation.use_parallelization:
-					outputs = {}
-					with ThreadPoolExecutor() as executor:
-						futures = [executor.submit(process_nl, nl) for nl in config.simulation.workers_list]
-						for future in tqdm(as_completed(futures), total=len(futures), desc='Processing labelers'):
-							nl, result = future.result()
-							outputs[nl] = result
+
+					outputs = {f'NL{nl}':np.full((config.simulation.num_seeds), np.nan).tolist()  for nl in config.simulation.workers_list}
+					# with ThreadPoolExecutor() as executor:
+					# 	futures = [executor.submit(process_nl, nl) for nl in config.simulation.workers_list]
+					# 	for future in tqdm(as_completed(futures), total=len(futures), desc='Processing labelers'):
+					# 		nl, result = future.result()
+					# 		outputs[nl] = result
+					core_results = get_core_results_parallel()
+
+					for args, values in core_results:
+						outputs[f'NL{args["n_labelers"]}'][args['seed']] = values
+
 				else:
 					outputs = get_core_results_not_parallel()
 

@@ -14,12 +14,12 @@
     "main_url"         : "https://archive.ics.uci.edu/ml/machine-learning-databases/"
   },
   "simulation": {
-    "nlabelers_min_max"       : [3,4],
+    "nlabelers_min_max"       : [3,5],
     "high_dis"                : 1.0,
     "low_dis"                 : 0.4,
-    "num_simulations"         : 10,
-    "num_seeds"               : 2,
-    "use_parallelization"     : false,
+    "num_simulations"         : 2,
+    "num_seeds"               : 5,
+    "use_parallelization"     : true,
     "max_parallel_workers"     : 10
   },
   "output": {
