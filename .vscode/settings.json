@@ -5,11 +5,25 @@
         "**/.hg": true,
         "**/CVS": true,
         "**/.DS_Store": true,
-        "**/Thumbs.db": true
+        "**/Thumbs.db": true,
+        "crowd_certain/utilities/__pycache__": true,
+        "requirements.yml": true,
+        "requirements.txt": true,
+        "needs_profiling.prof": true,
+        "setup.py": true,
+        ".gitignore": true
     },
-    "hide-files.files": [],
+    "hide-files.files": [
+        "crowd_certain/utilities/__pycache__",
+        "requirements.yml",
+        "requirements.txt",
+        "needs_profiling.prof",
+        "setup.py",
+        ".gitignore"
+    ],
     "editor.inlineSuggest.showToolbar": "always",
     "debug.console.fontSize": 12,
     "notebook.output.fontSize": 14,
-    "notebook.output.lineHeight": 0
+    "notebook.output.lineHeight": 0,
+    "explorer.excludeGitIgnore": true
 }

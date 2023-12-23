@@ -7,7 +7,7 @@ from typing import Any, TypeAlias, Union
 from pydantic import BaseModel, confloat, conint
 from pydantic.functional_validators import field_validator
 
-from crowd_certain.utilities.params import DataModes, DatasetNames, OutputModes, ReadMode
+from crowd_certain.utilities.params import DataModes, DatasetNames, OutputModes, ReadMode,UncertaintyTechniques
 
 PathNoneType: TypeAlias = Union[pathlib.Path, None]
 
@@ -61,6 +61,16 @@ class DatasetSettings(BaseModel):
 	augmentation_count: conint(ge   = 0) = 1
 	main_url: str = "https://archive.ics.uci.edu/ml/machine-learning-databases/"
 
+	@field_validator('datasetNames', mode='before')
+	def check_dataset_names(cls, v: Union[list[DatasetNames], str]):
+		if isinstance(v, str):
+			if v.upper() == 'ALL':
+				return list(DatasetNames)
+			else:
+				return [DatasetNames(v.lower())]
+		return v
+
+
 	@field_validator('path_all_datasets', mode='after')
 	def make_path_absolute(cls, v: pathlib.Path):
 		return (pathlib.Path(__file__).parents[1] / v).resolve()
@@ -78,18 +88,28 @@ class OutputSettings(BaseModel):
 
 class SimulationSettings(BaseModel):
 	n_workers_min_max   : list[int] = [3,8]
-	high_dis            : float       = 1
-	low_dis             : float       = 0.4
-	num_simulations     : int         = 10
-	num_seeds           : int         = 3
-	use_parallelization: bool         = True
+	high_dis            : float     = 1
+	low_dis             : float     = 0.4
+	num_simulations     : int       = 10
+	num_seeds           : int       = 3
+	use_parallelization: bool       = True
 	max_parallel_workers: int = 10
+	uncertainty_techniques: UncertaintyTechniques = UncertaintyTechniques.STD
+
+
+	@field_validator('uncertainty_techniques', mode='before')
+	def check_dataset_names(cls, v: Union[list[UncertaintyTechniques], str]):
+		if isinstance(v, str):
+			if v.upper() == 'ALL':
+				return list(DatasetNames)
+			else:
+				return [UncertaintyTechniques(v.lower())]
+		return v
+
 
 	@property
 	def workers_list(self):
 		return list(range(*self.n_workers_min_max))
-
-
 
 
 class Settings(BaseModel):
@@ -174,3 +194,5 @@ def main():
 
 if __name__ == '__main__':
 	main()
+
+

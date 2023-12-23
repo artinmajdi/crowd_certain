@@ -307,9 +307,9 @@ class AIM1_3:
 						truth[mode]['truth'] = data[mode].true.copy()
 
 					# Extracting the simulated noisy manual labels based on the worker's strength
-					truth['train'][LB] = getting_noisy_manual_labels_for_each_worker( seed_num=0,  # LB_index,
-																					  true=data['train'].true.values,
-																					  l_strength=workers_strength.T[LB].values )
+					truth['train'][LB] = getting_noisy_manual_labels_for_each_worker( 	seed_num=0,  # LB_index,
+																						true=data['train'].true.values,
+																						l_strength=workers_strength.T[LB].values )
 
 					truth['test'][LB] = getting_noisy_manual_labels_for_each_worker( seed_num=1,  # LB_index,
 																					 true=data['test'].true.values,
@@ -359,12 +359,15 @@ class AIM1_3:
 						# converting to dataframe
 						predicted_labels_all_sims[mode][LB] = pd.DataFrame(predicted_labels_all_sims[mode][LB], index=data[mode].index)
 
-						# predicted probability of each class after MV over all simulations
-						predicted_labels_all_sims[mode][LB]['mv'] = ( predicted_labels_all_sims[mode][LB].mean(axis=1) > 0.5)
 
 						# uncertainties for each worker over all simulations
 						# TODO: use different uncertainty measurement techniques for the SSIAI paper
 						uncertainties[mode][LB] = predicted_labels_all_sims[mode][LB].std( axis=1 )
+
+
+						# predicted probability of each class after MV over all simulations
+						predicted_labels_all_sims[mode][LB]['mv'] = ( predicted_labels_all_sims[mode][LB].mean(axis=1) > 0.5)
+
 
 				# reshaping the dataframes
 				preds = { 'train': {}, 'test': {} }
@@ -810,8 +813,11 @@ class Aim1_3_Data_Analysis_Results:
 
 		self.outputs  = None
 		self.accuracy = dict(freq=pd.DataFrame(), beta=pd.DataFrame())
-		self.config                 = config
-		self.results_all_datasets  = AIM1_3.calculate_all_datasets(config=config)
+		self.config   = config
+
+	def update(self) -> 'Aim1_3_Data_Analysis_Results':
+		self.results_all_datasets  = AIM1_3.calculate_all_datasets(config=self.config)
+		return self
 
 
 	def get_result(self, metric_name='F_all', dataset_name: DatasetNames=DatasetNames.MUSHROOM, strategy=StrategyNames.FREQ , nl='NL3', seed_ix=0, method_name=ProposedTechniqueNames.PROPOSED, data_mode='test'):

@@ -49,6 +49,16 @@ class DataModes(enum.Enum):
 
 
 @members
+class UncertaintyTechniques(enum.Enum):
+	STD     = "standard_deviation"
+	ENTROPY = "entropy"
+	PI      = "predicted_interval"
+	BMA     = "bayesian_model_avaraging"
+	CBM     = "committee_based_method"
+	CP      = "conformal_prediction"
+
+
+@members
 class EvaluationMetricNames(enum.Enum):
 	ACC = 'ACC'
 	AUC = 'AUC'
@@ -107,3 +117,4 @@ def main():
 
 if __name__ == '__main__':
 	main()
+
