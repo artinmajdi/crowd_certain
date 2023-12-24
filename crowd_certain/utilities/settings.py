@@ -12,42 +12,6 @@ from crowd_certain.utilities.params import DataModes, DatasetNames, OutputModes,
 PathNoneType: TypeAlias = Union[pathlib.Path, None]
 
 
-# class CommonBaseModel(BaseModel):
-#     # Define the absolute path adjustment in a root_validator
-#     @root_validator(pre=True)
-#     def make_path_absolute(cls, values):
-#         for field_name, model_field in cls.__fields__.items():
-#             # Check if the field type is pathlib.Path
-#             if issubclass(model_field.type_, pathlib.Path):
-#                 # Check if the field is in values and is a Path (to prevent overwriting non-Path values)
-#                 if field_name in values and isinstance(values[field_name], pathlib.Path):
-#                     # Adjust the path to be absolute
-#                     values[field_name] = pathlib.Path(__file__).parents[1] / values[field_name]
-#         return values
-
-
-# def add_path_validator(model_class: Type[BaseModel]) -> Type[BaseModel]:
-#     # Define a classmethod inside the decorator
-#     @classmethod
-#     def make_path_absolute(cls, v: pathlib.Path):
-#         if not v.is_absolute():
-#             return pathlib.Path(__file__).parents[1] / v
-#         return v
-
-#     # Dynamically add validators for all pathlib.Path fields
-#     for field_name, field_type in model_class.__annotations__.items():
-#         if field_type == pathlib.Path:
-#             # The name of the validator is composed to be unique for each field
-#             validator_name = f"validate_{field_name}"
-#             setattr(
-#                 model_class,
-#                 validator_name,
-#                 validator(field_name, allow_reuse=True)(make_path_absolute)
-#             )
-
-#     return model_class
-
-# @add_path_validator
 class DatasetSettings(BaseModel):
 	data_mode         : DataModes           = DataModes.TRAIN
 	path_all_datasets: pathlib.Path         = pathlib.Path('datasets')
@@ -94,14 +58,15 @@ class SimulationSettings(BaseModel):
 	num_seeds           : int       = 3
 	use_parallelization: bool       = True
 	max_parallel_workers: int = 10
-	uncertainty_techniques: UncertaintyTechniques = UncertaintyTechniques.STD
+	uncertainty_techniques: list[UncertaintyTechniques] = [UncertaintyTechniques.STD]
+	consistency_techniques: list[ConsistencyTechniques] = [ConsistencyTechniques.ONE_MI]
 
 
 	@field_validator('uncertainty_techniques', mode='before')
 	def check_dataset_names(cls, v: Union[list[UncertaintyTechniques], str]):
 		if isinstance(v, str):
 			if v.upper() == 'ALL':
-				return list(DatasetNames)
+				return list(UncertaintyTechniques)
 			else:
 				return [UncertaintyTechniques(v.lower())]
 		return v

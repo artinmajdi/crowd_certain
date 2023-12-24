@@ -18,10 +18,11 @@ from sklearn import ensemble as sk_ensemble, metrics as sk_metrics
 from tqdm import tqdm
 import functools
 import itertools
+import scipy
 
 from crowd_certain.utilities import load_data
 from crowd_certain.utilities.params import ConfidenceScoreNames, DatasetNames, EvaluationMetricNames, MainBenchmarks, \
-	OtherBenchmarkNames, ProposedTechniqueNames, StrategyNames
+	OtherBenchmarkNames, ProposedTechniqueNames, StrategyNames, UncertaintyTechniques
 from crowd_certain.utilities.settings import OutputModes, Settings
 
 
@@ -293,11 +294,56 @@ class AIM1_3:
 
 			def looping_over_all_workers(workers_strength):
 
-				""" Looping over all simulations. this is to measure uncertainties """
+				def calculate_uncertainties(df: pd.DataFrame, techniques: list[UncertaintyTechniques]) -> pd.DataFrame:
+					""" Looping over all simulations. this is to measure uncertainties """
+
+					# TODO: use different uncertainty measurement techniques for the SSIAI paper
+
+					epsilon = np.finfo(float).eps
+					df = df.astype(int)
+
+					df_uncertainties = pd.DataFrame(columns=techniques, index=df.index)
+
+					for tech in config.simulation.uncertainty_techniques:
+
+						if tech is UncertaintyTechniques.STD:
+							df_uncertainties[tech] = df.std( axis=1 )
+
+						elif tech is UncertaintyTechniques.ENTROPY:
+							# Normalize each row to sum to 1
+							# >> df_normalized = df.div(df.sum(axis=1) + epsilon, axis=0)
+							# Calculate entropy
+							# >> uncertainties[mode][LB] = - (df_normalized * np.log(df_normalized + epsilon)).sum(axis=1)
+							df_uncertainties[tech] = df.apply(lambda x: scipy.stats.entropy(x), axis=1).fillna(0)
+
+						elif tech is UncertaintyTechniques.CV:
+							df_uncertainties[tech] = df.std(axis=1) / (df.mean(axis=1) + epsilon)
+
+						elif tech is UncertaintyTechniques.PI:
+							df_uncertainties[tech] = df.apply(lambda row: np.percentile(row.astype(int), 75) - np.percentile(row.astype(int), 25), axis=1)
+
+						elif tech is UncertaintyTechniques.CI:
+							# Lower Bound: This is the first value in the tuple. It indicates the lower end of the range. If you have a 95% confidence interval, this means that you can be 95% confident that the true population mean is greater than or equal to this value.
+
+							# Upper Bound: This is the second value in the tuple. It represents the upper end of the range. Continuing with the 95% confidence interval example, you can be 95% confident that the true population mean is less than or equal to this value.
+
+							confidene_interval = df.apply(lambda row: scipy.stats.norm.interval(0.95, loc=np.mean(row), scale=scipy.stats.sem(row)) if np.std(row) > 0 else (np.nan, np.nan),axis=1).apply(pd.Series)
+
+														# Calculate the width of the confidence interval (uncertainty score)
+							weight = confidene_interval[1] - confidene_interval[0]
+
+							# Optional: Normalize by the mean or another relevant value
+							# For example, normalize by the midpoint of the interval
+							# midpoint = (confidene_interval[1] + confidene_interval[0]) / 2
+
+							df_uncertainties[tech] = weight.fillna(0) # / midpoint
+
+					return df_uncertainties
 
 				predicted_labels_all_sims = {'train': {}, 'test': {}}
 				truth = { 'train': pd.DataFrame(), 'test': pd.DataFrame() }
-				uncertainties = { 'train': pd.DataFrame(), 'test': pd.DataFrame() }
+				columns = pd.MultiIndex.from_product([workers_strength.index, config.simulation.uncertainty_techniques], names=['worker', 'uncertainty_technique'])
+				uncertainties = { 'train': pd.DataFrame(columns=columns), 'test': pd.DataFrame(columns=columns) }
 
 				for LB_index, LB in enumerate(workers_strength.index):
 
@@ -359,15 +405,11 @@ class AIM1_3:
 						# converting to dataframe
 						predicted_labels_all_sims[mode][LB] = pd.DataFrame(predicted_labels_all_sims[mode][LB], index=data[mode].index)
 
-
 						# uncertainties for each worker over all simulations
-						# TODO: use different uncertainty measurement techniques for the SSIAI paper
-						uncertainties[mode][LB] = predicted_labels_all_sims[mode][LB].std( axis=1 )
-
+						uncertainties[mode][LB] = calculate_uncertainties(df=predicted_labels_all_sims[mode][LB], techniques=config.simulation.uncertainty_techniques)
 
 						# predicted probability of each class after MV over all simulations
 						predicted_labels_all_sims[mode][LB]['mv'] = ( predicted_labels_all_sims[mode][LB].mean(axis=1) > 0.5)
-
 
 				# reshaping the dataframes
 				preds = { 'train': {}, 'test': {} }
@@ -417,15 +459,15 @@ class AIM1_3:
 			# To-Do: This is the part where I should measure the prob_mv_binary for different # of workers instead of all of them
 			prob_mv_binary = predicted_labels.mean(axis=1) > 0.5
 
-			T1    : dict[str, Any] = {}
-			T2    : dict[str, Any] = {}
+			T1    = 1 - predicted_uncertainty
+			T2    = T1.copy()
 			w_hat1: dict[str, Any] = {}
 			w_hat2: dict[str, Any] = {}
 
 			for workers_name in predicted_labels.columns:
-				T1[workers_name] = 1 - predicted_uncertainty[workers_name]
+				# T1[workers_name] = 1 - predicted_uncertainty[workers_name]
 
-				T2[workers_name] = T1[workers_name].copy()
+				# T2[workers_name] = T1[workers_name].copy()
 				T2[workers_name][predicted_labels[workers_name].values != prob_mv_binary.values] = 0
 
 				w_hat1[workers_name] = T1[workers_name].mean(axis=0)

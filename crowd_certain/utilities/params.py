@@ -52,11 +52,18 @@ class DataModes(enum.Enum):
 class UncertaintyTechniques(enum.Enum):
 	STD     = "standard_deviation"
 	ENTROPY = "entropy"
+	CV		= "coefficient_of_variation"
 	PI      = "predicted_interval"
-	BMA     = "bayesian_model_avaraging"
-	CBM     = "committee_based_method"
-	CP      = "conformal_prediction"
+	CI 		= "confidence_interval"
+	# BMA     = "bayesian_model_avaraging"
+	# CBM     = "committee_based_method"
+	# CP      = "conformal_prediction"
 
+
+@members
+class ConsistencyTechniques(enum.Enum):
+	ONE_MINUS_UNCERTAINTY = "one_minus_uncertainty"
+	ONE_DIVIDED_BY_UNCERTAINTY = "one_divided_by_uncertainty"
 
 @members
 class EvaluationMetricNames(enum.Enum):
