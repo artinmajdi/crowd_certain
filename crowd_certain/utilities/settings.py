@@ -3,32 +3,34 @@ import json
 import pathlib
 import sys
 from typing import Any, TypeAlias, Union
+import numpy as np
 
 from pydantic import BaseModel, confloat, conint
 from pydantic.functional_validators import field_validator
+import sklearn
 
-from crowd_certain.utilities.params import DataModes, DatasetNames, OutputModes, ReadMode,UncertaintyTechniques
+from crowd_certain.utilities.params import ConsistencyTechniques, DataModes, DatasetNames, OutputModes, ReadMode, SimulationMethods,UncertaintyTechniques
 
 PathNoneType: TypeAlias = Union[pathlib.Path, None]
 
 
 class DatasetSettings(BaseModel):
-	data_mode         : DataModes           = DataModes.TRAIN
-	path_all_datasets: pathlib.Path         = pathlib.Path('datasets')
-	dataset_name      : DatasetNames = None
-	datasetNames      : list[DatasetNames]  = None
-	non_null_samples  : bool                = True
-	train_test_ratio  : confloat(ge=0.0,le=1.0) = 0.7
-	random_state      : int                 = 0
-	read_mode         : ReadMode            = ReadMode.READ_ARFF
-	shuffle: bool = False
-	augmentation_count: conint(ge   = 0) = 1
-	main_url: str = "https://archive.ics.uci.edu/ml/machine-learning-databases/"
+	data_mode         : DataModes          = DataModes.TRAIN
+	path_all_datasets : pathlib.Path       = pathlib.Path('datasets')
+	dataset_name      : DatasetNames       = None
+	datasetNames      : list[DatasetNames] = None
+	non_null_samples  : bool               = True
+	train_test_ratio  : confloat(ge        = 0.0                                                         , le = 1.0) = 0.7
+	random_state      : int                = 0
+	read_mode         : ReadMode           = ReadMode.READ_ARFF
+	shuffle           : bool               = False
+	augmentation_count: conint(ge          = 0)                                                           = 1
+	main_url          : str                = "https://archive.ics.uci.edu/ml/machine-learning-databases/"
 
 	@field_validator('datasetNames', mode='before')
 	def check_dataset_names(cls, v: Union[list[DatasetNames], str]):
 		if isinstance(v, str):
-			if v.upper() == 'ALL':
+			if v.lower() == 'all':
 				return list(DatasetNames)
 			else:
 				return [DatasetNames(v.lower())]
@@ -38,6 +40,7 @@ class DatasetSettings(BaseModel):
 	@field_validator('path_all_datasets', mode='after')
 	def make_path_absolute(cls, v: pathlib.Path):
 		return (pathlib.Path(__file__).parents[1] / v).resolve()
+
 
 # @add_path_validator
 class OutputSettings(BaseModel):
@@ -50,6 +53,29 @@ class OutputSettings(BaseModel):
 		return (pathlib.Path(__file__).parents[1] / v).resolve()
 
 
+class TechniqueSettings(BaseModel):
+	uncertainty_techniques: list[UncertaintyTechniques] = [UncertaintyTechniques.STD]
+	consistency_techniques: list[ConsistencyTechniques] = [ConsistencyTechniques.ONE_MINUS_UNCERTAINTY]
+
+	@field_validator('uncertainty_techniques', mode='before')
+	def check_uncertainty_techniques(cls, v: Union[list[UncertaintyTechniques], str]):
+		if isinstance(v, str):
+			if v.lower() == 'all':
+				return list(UncertaintyTechniques)
+			else:
+				return [UncertaintyTechniques(v.lower())]
+		return v
+
+	@field_validator('consistency_techniques', mode='before')
+	def check_consistency_techniques(cls, v: Union[list[ConsistencyTechniques], str]):
+		if isinstance(v, str):
+			if v.lower() == 'all':
+				return list(ConsistencyTechniques)
+			else:
+				return [ConsistencyTechniques(v.lower())]
+		return v
+
+
 class SimulationSettings(BaseModel):
 	n_workers_min_max   : list[int] = [3,8]
 	high_dis            : float     = 1
@@ -58,30 +84,31 @@ class SimulationSettings(BaseModel):
 	num_seeds           : int       = 3
 	use_parallelization: bool       = True
 	max_parallel_workers: int = 10
-	uncertainty_techniques: list[UncertaintyTechniques] = [UncertaintyTechniques.STD]
-	consistency_techniques: list[ConsistencyTechniques] = [ConsistencyTechniques.ONE_MI]
-
-
-	@field_validator('uncertainty_techniques', mode='before')
-	def check_dataset_names(cls, v: Union[list[UncertaintyTechniques], str]):
-		if isinstance(v, str):
-			if v.upper() == 'ALL':
-				return list(UncertaintyTechniques)
-			else:
-				return [UncertaintyTechniques(v.lower())]
-		return v
-
+	simulation_methods: SimulationMethods = SimulationMethods.RANDOM_STATES
 
 	@property
 	def workers_list(self):
 		return list(range(*self.n_workers_min_max))
 
+	@property
+	def classifiers_list(self):
+		return  [ sklearn.neighbors.KNeighborsClassifier(3),
+					sklearn.svm.SVC(gamma=2, C=1),
+					sklearn.tree.DecisionTreeClassifier(max_depth=5),
+					sklearn.ensemble.RandomForestClassifier(max_depth=5, n_estimators=10, max_features=1),
+					sklearn.neural_network.MLPClassifier(alpha=1, max_iter=1000),
+					sklearn.ensemble.AdaBoostClassifier(),
+					sklearn.naive_bayes.GaussianNB(),
+					sklearn.discriminant_analysis.QuadraticDiscriminantAnalysis(),
+						]
+
 
 class Settings(BaseModel):
 
-	dataset                    : DatasetSettings
-	simulation                 : SimulationSettings
-	output                     : OutputSettings
+	dataset   : DatasetSettings
+	simulation: SimulationSettings
+	technique : TechniqueSettings
+	output    : OutputSettings
 
 	class Config:
 		use_enum_values      = False
@@ -134,9 +161,10 @@ def get_settings(argv=None, jupyter=True) -> 'Settings':
 					config_data[config_key][key] = args_dict[key]
 
 		# Updating the config with the arguments as command line input
-		update_config(DatasetSettings             , 'dataset')
-		update_config(SimulationSettings          , 'simulation')
-		update_config(OutputSettings              , 'output')
+		update_config(DatasetSettings    , 'dataset')
+		update_config(SimulationSettings , 'simulation')
+		update_config(TechniqueSettings  , 'technique')
+		update_config(OutputSettings     , 'output')
 
 		# Convert the dictionary to a Namespace
 		config = Settings(**config_data)

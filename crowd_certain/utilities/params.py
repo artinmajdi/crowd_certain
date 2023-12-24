@@ -98,13 +98,13 @@ class OtherBenchmarkNames(enum.Enum):
 
 @members
 class MainBenchmarks(enum.Enum):
-	TAO	= 'Tao'
+	TAO	  = 'Tao'
 	SHENG = 'Sheng'
 
 
 @members
 class ProposedTechniqueNames(enum.Enum):
-	PROPOSED = 'proposed'
+	PROPOSED = 'Crowd-Certain Without Penalization'
 	PROPOSED_PENALIZED = 'Crowd-Certain'
 
 
@@ -117,6 +117,13 @@ class StrategyNames(enum.Enum):
 class ConfidenceScoreNames(enum.Enum):
 	ECE   = 'ece score'
 	BRIER = 'brier score loss'
+
+
+@members
+class SimulationMethods(enum.Enum):
+	RANDOM_STATES = "random_states"
+	MULTIPLE_CLASSIFIERS = "multiple_classifiers"
+
 
 def main():
 	print(EvaluationMetricNames.AUC in ['AUC', 'ACC'])

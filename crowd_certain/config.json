@@ -14,13 +14,16 @@
     "main_url"         : "https://archive.ics.uci.edu/ml/machine-learning-databases/"
   },
   "simulation": {
-    "n_workers_min_max"       : [3,7],
+    "n_workers_min_max"       : [3,5],
     "high_dis"                : 1.0,
     "low_dis"                 : 0.4,
     "num_simulations"         : 5,
     "num_seeds"               : 5,
     "use_parallelization"     : false,
-    "max_parallel_workers"     : 10,
+    "max_parallel_workers"    : 10,
+    "simulation_methods"      :"random_states"
+  },
+  "technique": {
     "uncertainty_techniques"   : "all",
     "consistency_techniques"   : "all"
   },
