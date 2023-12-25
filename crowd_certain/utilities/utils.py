@@ -1,9 +1,12 @@
+from collections import OrderedDict
+from copy import deepcopy
 import enum
 import functools
 import multiprocessing
 import pickle
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+import time
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -243,30 +246,34 @@ class AIM1_3:
 
 	def calculate_uncertainties(self, df: pd.DataFrame) -> pd.DataFrame:
 
-		# TODO: make sure all uncertainties are between 0 and 1
-
 		epsilon = np.finfo(float).eps
 		df = df.astype(int)
 
-		df_uncertainties = pd.DataFrame(columns=self.config.technique.uncertainty_techniques, index=df.index)
+		df_uncertainties = pd.DataFrame(columns=[l.value for l in self.config.technique.uncertainty_techniques], index=df.index)
 
 		for tech in self.config.technique.uncertainty_techniques:
 
 			if tech is UncertaintyTechniques.STD:
-				df_uncertainties[tech] = df.std( axis=1 )
+				df_uncertainties[tech.value] = df.std( axis=1 )
 
 			elif tech is UncertaintyTechniques.ENTROPY:
 				# Normalize each row to sum to 1
 				# >> df_normalized = df.div(df.sum(axis=1) + epsilon, axis=0)
 				# Calculate entropy
 				# >> uncertainties[mode][LB] = - (df_normalized * np.log(df_normalized + epsilon)).sum(axis=1)
-				df_uncertainties[tech] = df.apply(lambda x: scipy.stats.entropy(x), axis=1).fillna(0)
+				entropy = df.apply(lambda x: scipy.stats.entropy(x), axis=1).fillna(0)
+
+				# normalizing entropy values to be between 0 and 1
+				df_uncertainties[tech.value] = entropy / np.log(df.shape[1])
 
 			elif tech is UncertaintyTechniques.CV:
-				df_uncertainties[tech] = df.std(axis=1) / (df.mean(axis=1) + epsilon)
+				# The coefficient of variation (CoV) is a measure of relative variability. It is defined as the ratio of the standard deviation. CoV doesn't have an upper bound, but it's always non-negative. Normalizing CoV to a range of [0, 1] isn't straightforward because it can theoretically take any non-negative value. A common approach is to use a transformation that asymptotically approaches 1 as CoV increases. However, the choice of transformation can be somewhat arbitrary and may depend on the context of your data. One simple approach is to use a bounded function like the hyperbolic tangent:
+
+				coefficient_of_variation = df.std(axis=1) / (df.mean(axis=1) + epsilon)
+				df_uncertainties[tech.value] = np.tanh(coefficient_of_variation)
 
 			elif tech is UncertaintyTechniques.PI:
-				df_uncertainties[tech] = df.apply(lambda row: np.percentile(row.astype(int), 75) - np.percentile(row.astype(int), 25), axis=1)
+				df_uncertainties[tech.value] = df.apply(lambda row: np.percentile(row.astype(int), 75) - np.percentile(row.astype(int), 25), axis=1)
 
 			elif tech is UncertaintyTechniques.CI:
 				# Lower Bound: This is the first value in the tuple. It indicates the lower end of the range. If you have a 95% confidence interval, this means that you can be 95% confident that the true population mean is greater than or equal to this value.
@@ -282,23 +289,49 @@ class AIM1_3:
 				# For example, normalize by the midpoint of the interval
 				# midpoint = (confidene_interval[1] + confidene_interval[0]) / 2
 
-				df_uncertainties[tech] = weight.fillna(0) # / midpoint
+				df_uncertainties[tech.value] = weight.fillna(0) # / midpoint
 
 		return df_uncertainties
 
 
-	def calculate_consistency(self, uncertainty: Any) -> dict[ConsistencyTechniques, Any]:
+	def calculate_consistency(self, uncertainty: Union[pd.DataFrame, pd.Series, np.ndarray]) -> pd.DataFrame:
 
-		consistency = {}
+		def initialize_consistency():
+			nonlocal consistency
+			upper_level = [l.value for l in self.config.technique.consistency_techniques]
+
+			if isinstance(uncertainty, pd.DataFrame):
+				# The use of OrderedDict helps preserving the order of columns.
+				levels = [list(OrderedDict.fromkeys(uncertainty.columns.get_level_values(i))) for i in range(uncertainty.columns.nlevels)]
+
+				new_columns 	 = [upper_level] + levels
+				new_columnsnames = ['consistency_technique'] + uncertainty.columns.names
+
+				columns = pd.MultiIndex.from_product(new_columns, names=new_columnsnames)
+				consistency = pd.DataFrame(columns=columns, index=uncertainty.index)
+
+			elif isinstance(uncertainty, pd.Series):
+				consistency = pd.DataFrame(columns=upper_level, index=uncertainty.index)
+
+			elif isinstance(uncertainty, np.ndarray):
+				consistency = pd.DataFrame(columns=upper_level, index=range(uncertainty.shape[0]))
+
+			return consistency
+
+		consistency = initialize_consistency()
+
 		for tech in self.config.technique.consistency_techniques:
 			if tech is ConsistencyTechniques.ONE_MINUS_UNCERTAINTY:
-				consistency[tech] = 1 - uncertainty
+				consistency[tech.value] = 1 - uncertainty
 
 			elif tech is ConsistencyTechniques.ONE_DIVIDED_BY_UNCERTAINTY:
-				consistency[tech] = 1 / (uncertainty + np.finfo(float).eps)
+				consistency[tech.value] = 1 / (uncertainty + np.finfo(float).eps)
+
+		# Making the worker the highest level in the columns
+		if isinstance(uncertainty, pd.DataFrame):
+			return consistency.swaplevel(0, 1, axis=1)
 
 		return consistency
-
 
 	@staticmethod
 	def get_AUC_ACC_F1(aggregated_labels: pd.DataFrame, truth: pd.Series) -> pd.DataFrame:
@@ -341,7 +374,7 @@ class AIM1_3:
 
 				truth = { 'train': pd.DataFrame(), 'test': pd.DataFrame() }
 
-				columns = pd.MultiIndex.from_product([workers_strength.index, config.technique.uncertainty_techniques], names=['worker', 'uncertainty_technique'])
+				columns = pd.MultiIndex.from_product([workers_strength.index, [l.value for l in config.technique.uncertainty_techniques]], names=['worker', 'uncertainty_technique'])
 
 				uncertainties = { 'train': pd.DataFrame(columns=columns), 'test': pd.DataFrame(columns=columns) }
 
@@ -484,35 +517,44 @@ class AIM1_3:
 
 	def aim1_3_measuring_proposed_weights(self, preds, uncertainties):
 		# TODO: HERE - THIS NEEDS TO BE FIXED
-		# TODO: add different consistency score measurements
 		# TODO This is the part where I should measure the prob_mv_binary for different # of workers instead of all of them
 		prob_mv_binary = preds.mean(axis=1) > 0.5
 
 		T1    = self.calculate_consistency( uncertainties )
 		T2    = T1.copy()
-		w_hat1: dict[str, Any] = {}
-		w_hat2: dict[str, Any] = {}
 
-		for workers_name in preds.columns:
-			# T1[workers_name] = 1 - predicted_uncertainty[workers_name]
+		proposed_techniques = [l.value for l in ProposedTechniqueNames]
+		w_hat = pd.DataFrame(index=proposed_techniques, columns=T1.columns, dtype=float)
+		# w_hat2 = pd.Series(index=T1.columns)
 
-			# T2[workers_name] = T1[workers_name].copy()
-			T2[workers_name][preds[workers_name].values != prob_mv_binary.values] = 0
+		for worker in preds.columns:
 
-			w_hat1[workers_name] = T1[workers_name].mean(axis=0)
-			w_hat2[workers_name] = T2[workers_name].mean(axis=0)
+			T2.loc[preds[worker].values != prob_mv_binary.values, worker] = 0
 
-		w_hat = pd.DataFrame([w_hat1, w_hat2], index=list(ProposedTechniqueNames)).T
+			w_hat[worker] = pd.DataFrame.from_dict({ proposed_techniques[0]: T1[worker].mean(axis=0),
+												 	 proposed_techniques[1]: T2[worker].mean(axis=0)}, orient='index')
 
-		# measuring average weight
-		weights = w_hat.divide(w_hat.sum(axis=0), axis=1)
+			# w_hat.loc[proposed_techniques[0],worker] = T1[worker].mean(axis=0)
+			# w_hat[worker].iloc[proposed_techniques[1]] = T2[worker].mean(axis=0)
 
-		probs_weighted = pd.DataFrame(columns=list(ProposedTechniqueNames), index=preds.index)
-		for method in ProposedTechniqueNames:
-			# probs_weighted[method] =( predicted_uncertainty * weights[method] ).sum(axis=1)
-			probs_weighted[method] = (preds * weights[method]).sum( axis=1 )
+		# w_hat = pd.DataFrame([w_hat1, w_hat2], index=list(ProposedTechniqueNames)).T
 
-		return weights, probs_weighted
+		# measuring average weight over all workers. used to normalize the weights.
+		w_hat_mean_over_workers = w_hat.T.groupby(level=[1,2]).sum().T
+
+		# The below for loop can also be written as the following. this would be very slightly faster but much more complicated logit
+		# weights = w_hat.T.groupby(level=0, group_keys=False).apply(lambda row: row.divide(w_hat_mean_over_workers.T)).swaplevel(1,2).swaplevel(0,1).sort_index().T
+		weights = pd.DataFrame().reindex_like(w_hat)
+		for worker in preds.columns:
+			weights[worker] = w_hat[worker].divide(w_hat_mean_over_workers)
+
+
+		# probs_weighted = pd.DataFrame(columns=proposed_techniques, index=preds.index)
+		# for method in proposed_techniques:
+		# 	# probs_weighted[method] =( predicted_uncertainty * weights[method] ).sum(axis=1)
+		# 	probs_weighted[method] = (preds * weights[method]).sum( axis=1 )
+
+		return weights #, probs_weighted
 
 
 	@staticmethod
@@ -673,7 +715,7 @@ class AIM1_3:
 		yhat_benchmark_classifier = preds_all['test']['simulation_0']
 
 		# Measuring weights for the proposed technique
-		weights_proposed, prob_weighted = aim1_3.aim1_3_measuring_proposed_weights( preds=yhat_proposed_classifier, uncertainties=uncertainties_all['test'])
+		weights_proposed = aim1_3.aim1_3_measuring_proposed_weights( preds=yhat_proposed_classifier, uncertainties=uncertainties_all['test'])
 
 		# Benchmark accuracy measurement
 		weights_Tao = aim1_3.measuring_Tao_weights_based_on_actual_labels( delta=yhat_benchmark_classifier, noisy_true_labels=truth_all['test'].drop(columns=['truth']))
@@ -851,9 +893,9 @@ class AIM1_3:
 
 
 		return ResultsComparisonsType( 	weight_strength_relation  = weight_strength_relation,
-									    findings_confidence_score = findings_confidence_score,
-									    outputs                   = outputs,
-									    config                    = config)
+										findings_confidence_score = findings_confidence_score,
+										outputs                   = outputs,
+										config                    = config)
 
 
 	@classmethod

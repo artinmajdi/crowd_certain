@@ -22,8 +22,11 @@
         ".gitignore"
     ],
     "editor.inlineSuggest.showToolbar": "always",
-    "debug.console.fontSize": 12,
+    "debug.console.fontSize": 16,
     "notebook.output.fontSize": 14,
     "notebook.output.lineHeight": 0,
-    "explorer.excludeGitIgnore": true
+    "explorer.excludeGitIgnore": true,
+    "editor.fontSize": 16,
+    "pythonPreview.codeFooterDocs.fontSize": 16,
+    "pythonPreview.printOutputDocs.fontSize": 14
 }
