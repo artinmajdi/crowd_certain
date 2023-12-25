@@ -716,6 +716,7 @@ class AIM1_3:
 
 		# Measuring weights for the proposed technique
 		weights_proposed = aim1_3.aim1_3_measuring_proposed_weights( preds=yhat_proposed_classifier, uncertainties=uncertainties_all['test'])
+		# TODO: Checked until here.
 
 		# Benchmark accuracy measurement
 		weights_Tao = aim1_3.measuring_Tao_weights_based_on_actual_labels( delta=yhat_benchmark_classifier, noisy_true_labels=truth_all['test'].drop(columns=['truth']))
