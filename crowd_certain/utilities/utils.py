@@ -70,6 +70,7 @@ class BenchmarkTechniques:
 		for mode in ['train', 'test']:
 			self.crowd_labels[mode] = self.reshape_dataframe_into_this_sdk_format(self.crowd_labels[mode])
 
+
 	@classmethod
 	def get_techniques(cls, benchmark_name: OtherBenchmarkNames, test: pd.DataFrame, test_unique: np.ndarray):
 
@@ -159,7 +160,7 @@ class BenchmarkTechniques:
 		return cls(crowd_labels=crowd_labels, ground_truth=ground_truth).calculate(use_parallelization_benchmarks)
 
 
-	def calculate(self, use_parallelization_benchmarks) -> pd.DataFrame:
+	def calculate(self, use_parallelization_benchmarks) -> dict[OtherBenchmarkNames, pd.Series]:
 		# train    = self.crowd_labels['train']
 		# train_gt = self.ground_truth['train']
 		test: pd.DataFrame = self.crowd_labels['test']
@@ -174,11 +175,7 @@ class BenchmarkTechniques:
 		else:
 			output = [function(benchmark_name=m) for m in OtherBenchmarkNames]
 
-		aggregated_labels = {}
-		for benchmark_name, values in output:
-			aggregated_labels[benchmark_name] = values
-
-		return pd.DataFrame(aggregated_labels) #, index=test_unique)
+		return {technique: aggregated_labels for technique, aggregated_labels in output}
 
 
 	@staticmethod
@@ -516,7 +513,6 @@ class AIM1_3:
 
 
 	def aim1_3_measuring_proposed_weights(self, preds, uncertainties):
-		# TODO: HERE - THIS NEEDS TO BE FIXED
 		# TODO This is the part where I should measure the prob_mv_binary for different # of workers instead of all of them
 		prob_mv_binary = preds.mean(axis=1) > 0.5
 
@@ -613,20 +609,7 @@ class AIM1_3:
 		return W_hat_Tao.divide(z, axis=0)
 
 
-	def measuring_nu_and_confidence_score(self, workers_labels, weights_proposed, weights_Tao, yhat_proposed_classifier) -> Tuple[Dict[StrategyNames, Dict[enum.Enum, pd.DataFrame]], pd.DataFrame]:
-
-		def get_pred_and_weights(method_name: ProposedTechniqueNames):
-			if method_name in ProposedTechniqueNames:
-				# in the proposed method, unlike Tao and Sheng, we use the output of the trained classifiers as the predicted labels instead of the original worker's labels.
-				return yhat_proposed_classifier, weights_proposed[method_name]
-
-			elif method_name is MainBenchmarks.TAO:
-				return workers_labels, weights_Tao / self.n_workers
-
-			elif method_name is MainBenchmarks.SHENG:
-				return workers_labels, pd.DataFrame(1 / self.n_workers, index=weights_Tao.index, columns=weights_Tao.columns)
-
-			raise ValueError(f'Unknown method name: {method_name}')
+	def measuring_nu_and_confidence_score(self, workers_labels, weights_proposed, weights_Tao, yhat_proposed_classifier) -> Tuple[Dict[StrategyNames, Dict[enum.Enum, pd.DataFrame]], dict[str, Union[pd.DataFrame, pd.Series]]]:
 
 		def get_F(conf_strategy, delta, w) -> pd.DataFrame:
 			""" Calculating the confidence score for each sample """
@@ -666,19 +649,55 @@ class AIM1_3:
 
 			return out
 
-		F = {StrategyNames.FREQ:{}, StrategyNames.BETA:{}}
-		aggregated_labels = pd.DataFrame(columns=list(ProposedTechniqueNames) + list(MainBenchmarks), index=yhat_proposed_classifier.index)
+		def get_proposed_techniques(delta: pd.DataFrame, weights: pd.DataFrame) -> Tuple[pd.DataFrame, dict[tuple, dict[StrategyNames, pd.DataFrame]]]:
+			# in the proposed method, unlike Tao and Sheng, we use the output of the trained classifiers as the predicted labels instead of original worker's labels.
 
-		for methods in [ProposedTechniqueNames, MainBenchmarks]:
+			aggregated_labels = pd.DataFrame(index=delta.index, columns=weights.columns)
 
-			for m in methods:
-				pred, weights = get_pred_and_weights(m)
-				aggregated_labels[m] = (pred * weights).sum(axis=1)
+			# Looping through uncertainty and consistency techniques
+			F: dict[tuple, dict[StrategyNames, pd.DataFrame]] = {}
 
-				for strategy in StrategyNames:
-					F[strategy][m] = get_F( conf_strategy=strategy, delta=pred, w=weights )
+			for cln in weights.columns:
 
-		return F, aggregated_labels
+				aggregated_labels[cln] = (delta * weights[cln]).sum(axis=1)
+
+				F[cln]: dict[StrategyNames, pd.DataFrame] = {st: get_F( conf_strategy=st, delta=delta, w=weights[cln] ) for st in StrategyNames}
+
+			return aggregated_labels, F
+
+		def get_benchmarks(delta: pd.DataFrame, weights: pd.DataFrame) -> Tuple[pd.DataFrame, dict[StrategyNames, pd.DataFrame]]:
+
+			aggregated_labels = (delta * weights).sum(axis=1)
+
+			F: dict[StrategyNames, pd.DataFrame] = {st: get_F( conf_strategy=st, delta=delta, w=weights ) for st in StrategyNames}
+
+			return aggregated_labels, F
+
+
+		METHOD_TYPE = Union[ProposedTechniqueNames, MainBenchmarks]
+
+		F: dict[METHOD_TYPE, dict[StrategyNames, pd.DataFrame]] = {}
+
+
+		aggregated_labels: dict[METHOD_TYPE, pd.DataFrame] = {}
+
+		for m in ProposedTechniqueNames:
+			aggregated_labels[m], F[m] = get_proposed_techniques(delta  = yhat_proposed_classifier,
+																weights = weights_proposed.loc[m.value,:].unstack(level='worker').T)
+
+
+		aggregated_labels_benchmarks = pd.DataFrame(index=yhat_proposed_classifier.index, columns=MainBenchmarks.values())
+
+		for m in MainBenchmarks:
+			if m is MainBenchmarks.TAO:
+				aggregated_labels_benchmarks[m], F[m] = get_benchmarks( delta   = workers_labels,
+																		weights = weights_Tao / self.n_workers)
+
+			elif m is MainBenchmarks.SHENG:
+				aggregated_labels_benchmarks[m], F[m] = get_benchmarks( delta   = workers_labels,
+																		weights = pd.DataFrame(1 / self.n_workers, index=weights_Tao.index, columns=weights_Tao.columns))
+
+		return F, aggregated_labels, aggregated_labels_benchmarks
 
 
 	@classmethod
@@ -702,7 +721,6 @@ class AIM1_3:
 
 			return weights_Tao_mean, workers_strength
 
-
 		# Setting the random seed
 		np.random.seed(seed + 1)
 
@@ -716,17 +734,18 @@ class AIM1_3:
 
 		# Measuring weights for the proposed technique
 		weights_proposed = aim1_3.aim1_3_measuring_proposed_weights( preds=yhat_proposed_classifier, uncertainties=uncertainties_all['test'])
-		# TODO: Checked until here.
 
 		# Benchmark accuracy measurement
 		weights_Tao = aim1_3.measuring_Tao_weights_based_on_actual_labels( delta=yhat_benchmark_classifier, noisy_true_labels=truth_all['test'].drop(columns=['truth']))
 
-		F, aggregated_labels = aim1_3.measuring_nu_and_confidence_score(workers_labels=truth_all['test'].drop(columns=['truth']), weights_proposed=weights_proposed, weights_Tao=weights_Tao, yhat_proposed_classifier=yhat_proposed_classifier)
+		# TODO: Separate the proposed and main benchmarks functions. to have two separate aggreagted_labels and confidence_scores.
+		confidence_scores, aggregated_labels = aim1_3.measuring_nu_and_confidence_score(workers_labels=truth_all['test'].drop(columns=['truth']), weights_proposed=weights_proposed, weights_Tao=weights_Tao, yhat_proposed_classifier=yhat_proposed_classifier)
 
 		# Get the results for other benchmarks
-		aggregated_labels_benchmarks = BenchmarkTechniques.apply(true_labels=truth_all, use_parallelization_benchmarks=use_parallelization_benchmarks)
+		aggregated_labels_benchmarks2 = BenchmarkTechniques.apply(true_labels=truth_all, use_parallelization_benchmarks=use_parallelization_benchmarks)
 
-		aggregated_labels = pd.concat( [aggregated_labels, aggregated_labels_benchmarks.copy()], axis=1)
+		# TODO: merge the aggregated labels for main  and other benchmarks
+		aggregated_labels_benchmarks = pd.concat( [aggregated_labels_benchmarks, aggregated_labels_benchmarks2], axis=1)
 
 		# Measuring the metrics
 		metrics = AIM1_3.get_AUC_ACC_F1(aggregated_labels=aggregated_labels, truth=truth_all['test'].truth)
@@ -737,7 +756,7 @@ class AIM1_3:
 
 		return ResultType( true_labels       = truth_all,
 						   workers_strength  = workers_strength,
-						   F                 = F,
+						   F                 = confidence_scores,
 						   aggregated_labels = aggregated_labels,
 						   weights_proposed  = weights_proposed,
 						   weights_Tao       = weights_Tao,
