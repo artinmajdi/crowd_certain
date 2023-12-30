@@ -1,7 +1,7 @@
 import functools
 import multiprocessing
 import pickle
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -221,18 +221,21 @@ class Result2Type:
 
 @dataclass
 class ResultComparisonsType:
-	outputs                 : dict
-	config                   : 'Settings'
-	findings_confidence_score : dict
-	weight_strength_relation : pd.DataFrame
-
+	outputs                   : dict
+	config                    : 'Settings'
+	weight_strength_relation  : pd.DataFrame
 
 @dataclass
 class AIM1_3:
 	data            : dict
 	feature_columns : list
 	config          : 'Settings'
-	n_workers 		: Optional[int] = None
+	n_workers 		: int = 3
+	seed 			: int = 0
+
+	def __post_init__(self):
+		# Setting the random seed
+		np.random.seed(self.seed + 1)
 
 
 	@staticmethod
@@ -339,7 +342,7 @@ class AIM1_3:
 		return consistency
 
 	@staticmethod
-	def get_AUC_ACC_F1(aggregated_labels: pd.Series, truth: pd.Series) -> pd.DataFrame:
+	def get_AUC_ACC_F1(aggregated_labels: pd.Series, truth: pd.Series) -> pd.Series:
 
 		metrics = pd.Series(index=EvaluationMetricNames.values())
 
@@ -358,13 +361,11 @@ class AIM1_3:
 
 	def aim1_3_meauring_probs_uncertainties(self):
 
-		config = self.config
-
 		def assigning_strengths_randomly_to_each_worker():
 
 			workers_names = [f'worker_{j}' for j in range(self.n_workers)]
 
-			workers_strength_array = np.random.uniform(low=config.simulation.low_dis, high=config.simulation.high_dis, size=self.n_workers)
+			workers_strength_array = np.random.uniform(low=self.config.simulation.low_dis, high=self.config.simulation.high_dis, size=self.n_workers)
 
 			return pd.DataFrame({'workers_strength': workers_strength_array}, index=workers_names)
 
@@ -378,7 +379,7 @@ class AIM1_3:
 
 				truth = { 'train': pd.DataFrame(), 'test': pd.DataFrame() }
 
-				columns = pd.MultiIndex.from_product([workers_strength.index, [l.value for l in config.technique.uncertainty_techniques]], names=['worker', 'uncertainty_technique'])
+				columns = pd.MultiIndex.from_product([workers_strength.index, [l.value for l in self.config.technique.uncertainty_techniques]], names=['worker', 'uncertainty_technique'])
 
 				uncertainties = { 'train': pd.DataFrame(columns=columns), 'test': pd.DataFrame(columns=columns) }
 
@@ -387,10 +388,7 @@ class AIM1_3:
 			def update_noisy_labels():
 				nonlocal predicted_labels_all_sims, truth
 
-				def getting_noisy_manual_labels_for_each_worker(truth_array: np.ndarray, l_strength: float, seed_num: int=1):
-
-					# setting the random seed
-					# np.random.seed(seed_num)
+				def getting_noisy_manual_labels_for_each_worker(truth_array: np.ndarray, l_strength: float):
 
 					# number of samples and workers/workers
 					num_samples = truth_array.shape[0]
@@ -415,19 +413,19 @@ class AIM1_3:
 
 				# Extracting the simulated noisy manual labels based on the worker's strength
 				# TODO: check if the seed_num should be LB_index instead of 0 an 1
-				truth['train'][LB] = getting_noisy_manual_labels_for_each_worker( seed_num=0, truth_array=self.data['train'].true.values, l_strength=workers_strength.T[LB].values )
-				truth['test'][LB]  = getting_noisy_manual_labels_for_each_worker( seed_num=1, truth_array=self.data['test'].true.values, l_strength=workers_strength.T[LB].values )
+				truth['train'][LB] = getting_noisy_manual_labels_for_each_worker( truth_array=self.data['train'].true.values, l_strength=workers_strength.T[LB].values )
+				truth['test'][LB]  = getting_noisy_manual_labels_for_each_worker( truth_array=self.data['test'].true.values, l_strength=workers_strength.T[LB].values )
 
 			def update_predicted_labels_all_sims(LB, sim_num):
 				""" predicting the labels using trained networks for both train and test data """
 				nonlocal predicted_labels_all_sims
 
 				def get_classifier():
-					if config.simulation.simulation_methods is SimulationMethods.RANDOM_STATES:
-						return sk_ensemble.RandomForestClassifier(n_estimators=4, max_depth=4, random_state=sim_num) # n_estimators=4, max_depth=4
+					if self.config.simulation.simulation_methods is SimulationMethods.RANDOM_STATES:
+						return sk_ensemble.RandomForestClassifier(n_estimators=4, max_depth=4, random_state=self.seed * sim_num) # n_estimators=4, max_depth=4
 
-					elif config.simulation.simulation_methods is SimulationMethods.MULTIPLE_CLASSIFIERS:
-						return config.simulation.classifiers_list[sim_num]
+					elif self.config.simulation.simulation_methods is SimulationMethods.MULTIPLE_CLASSIFIERS:
+						return self.config.simulation.classifiers_list[sim_num]
 
 				# training a random forest on the aformentioned labels
 				classifier = get_classifier()
@@ -452,24 +450,23 @@ class AIM1_3:
 					predicted_labels_all_sims[mode][LB]['mv'] = ( predicted_labels_all_sims[mode][LB].mean(axis=1) > 0.5)
 
 			def get_n_simulations():
-				if config.simulation.simulation_methods is SimulationMethods.RANDOM_STATES:
-					return config.simulation.num_simulations
+				if self.config.simulation.simulation_methods is SimulationMethods.RANDOM_STATES:
+					return self.config.simulation.num_simulations
 
-				elif config.simulation.simulation_methods is SimulationMethods.MULTIPLE_CLASSIFIERS:
-					return len(config.simulation.classifiers_list)
+				elif self.config.simulation.simulation_methods is SimulationMethods.MULTIPLE_CLASSIFIERS:
+					return len(self.config.simulation.classifiers_list)
 
-			def swap_axes() -> dict[str, dict[str, pd.DataFrame]]:
-				nonlocal predicted_labels_all_sims
+			def swap_axes(predicted_labels_all_sims) -> dict[str, dict[str, pd.DataFrame]]:
 
 				# reshaping the dataframes
-				preds_swaped = { 'train': {}, 'test': {} }
+				preds_swaped: dict[str, dict[str, pd.DataFrame]] = { 'train': defaultdict(pd.DataFrame), 'test': defaultdict(pd.DataFrame) }
 
 				for mode in ['train', 'test']:
 
 					# reversing the order of simulations and workers. NOTE: for the final experiment I should use simulation_0. if I use the mv, then because the augmented truths keeps changing in each simulation, then with enough simulations, I'll end up witht perfect workers.
-					for i in range(config.simulation.num_simulations + 1):
+					for i in range(self.config.simulation.num_simulations + 1):
 
-						SM = f'simulation_{i}' if i < config.simulation.num_simulations else 'mv'
+						SM = f'simulation_{i}' if i < self.config.simulation.num_simulations else 'mv'
 
 						preds_swaped[mode][SM] = pd.DataFrame()
 						for LBx in [f'worker_{j}' for j in range( self.n_workers )]:
@@ -489,10 +486,9 @@ class AIM1_3:
 
 				update_uncertainties(LB)
 
-			preds = swap_axes()
+			preds = swap_axes(predicted_labels_all_sims)
 
 			return truth, uncertainties, preds
-
 
 		def adding_accuracy_for_each_worker():
 			nonlocal workers_strength, preds, truth
@@ -572,8 +568,9 @@ class AIM1_3:
 		# 	# probs_weighted[method] =( predicted_uncertainty * weights[method] ).sum(axis=1)
 		# 	probs_weighted[method] = (preds * weights[method]).sum( axis=1 )
 
-		# This will return a
-		return weights.unstack().unstack(level='worker')
+		# This will return a series
+		weights = weights.unstack().unstack(level='worker')
+		return weights
 
 
 	@staticmethod
@@ -633,7 +630,7 @@ class AIM1_3:
 
 
 	@staticmethod
-	def calculate_confidence_scores(delta, w: Union[pd.DataFrame, pd.Series], n_workers) -> Tuple[pd.Series, pd.Series]:
+	def calculate_confidence_scores(delta, w: Union[pd.DataFrame, pd.Series], n_workers) -> pd.DataFrame:
 		"""_summary_
 
 		Args:
@@ -652,7 +649,7 @@ class AIM1_3:
 		def get_freq():
 			out = pd.DataFrame({'P_pos':P_pos,'P_neg':P_neg})
 			# F[out['P_pos'] < out['P_neg']] = out['P_neg'][out['P_pos'] < out['P_neg']]
-			return out.max(axis=1), P_pos
+			return pd.DataFrame({'F': out.max(axis=1), 'F_pos': P_pos})
 
 		def get_beta():
 			out = pd.DataFrame({'P_pos':P_pos,'P_neg':P_neg})
@@ -676,9 +673,14 @@ class AIM1_3:
 			get_F_lambda = lambda row: max(row['I'], 1-row['I'])
 			# F = I.copy()
 			# F[I < 0.5] = (1 - F)[I < 0.5]
-			return out.apply(get_F_lambda, axis=1), out['I']
+			return pd.DataFrame({'F': out.apply(get_F_lambda, axis=1), 'F_pos': out['I']})
 
-		return pd.DataFrame( {StrategyNames.FREQ.value: get_freq(), StrategyNames.BETA.value: get_beta()} ).unstack()
+		columns = pd.MultiIndex.from_product([StrategyNames.values(), ['F', 'F_pos']], names=['strategies', 'F_F_pos'])
+		confidence_scores = pd.DataFrame(columns=columns, index=delta.index)
+		confidence_scores[StrategyNames.FREQ.value] = get_freq()
+		confidence_scores[StrategyNames.BETA.value] = get_beta()
+
+		return confidence_scores
 
 
 	def get_weights(self, workers_labels, preds, uncertainties, noisy_true_labels, n_workers) -> WeightType:
@@ -709,15 +711,15 @@ class AIM1_3:
 
 			agg_labels = pd.DataFrame(columns=weights.PROPOSED.index, index=preds.index)
 
-			index = pd.MultiIndex.from_product([ StrategyNames.values() , preds.index ], names=['strategies', 'indices'])
-			confidence_scores = {m: pd.DataFrame(columns=weights.PROPOSED.index, index=index) for m in ['F', 'F_pos']}
+			index = pd.MultiIndex.from_product([ ['F', 'F_pos'], StrategyNames.values(), preds.index ], names=['F_F_pos', 'strategies', 'indices'])
+			confidence_scores = {}
 
 			metrics = pd.DataFrame(columns=weights.PROPOSED.index, index=EvaluationMetricNames.values())
 
 			for cln in weights.PROPOSED.index:
 				agg_labels[cln] = (preds * weights.PROPOSED.T[cln]).sum(axis=1)
 
-				confidence_scores['F'][cln], confidence_scores['F_pos'][cln] = AIM1_3.calculate_confidence_scores(delta=preds, w=weights.PROPOSED.T[cln], n_workers=self.n_workers )
+				confidence_scores[cln] = AIM1_3.calculate_confidence_scores(delta=preds, w=weights.PROPOSED.T[cln], n_workers=self.n_workers )
 
 				# Measuring the metrics
 				metrics[cln] = AIM1_3.get_AUC_ACC_F1(aggregated_labels=agg_labels[cln], truth=true_labels['test'].truth)
@@ -741,8 +743,7 @@ class AIM1_3:
 				def initialize():
 					nonlocal agg_labels, confidence_scores
 
-					index   = pd.MultiIndex.from_product([StrategyNames.values(), workers_labels.index], names=['strategies', 'indices'])
-					confidence_scores = {m: pd.DataFrame(columns=MainBenchmarks.values(), index=index) for m in ['F', 'F_pos']}
+					confidence_scores = {}
 
 					agg_labels = pd.DataFrame(index=workers_labels.index, columns=MainBenchmarks.values())
 					return agg_labels, confidence_scores
@@ -755,7 +756,7 @@ class AIM1_3:
 
 					agg_labels[m.value] = (workers_labels * w).sum(axis=1)
 
-					confidence_scores['F'][m.value], confidence_scores['F_pos'][m.value] = AIM1_3.calculate_confidence_scores( delta=workers_labels, w=w, n_workers=self.n_workers )
+					confidence_scores[m.value] = AIM1_3.calculate_confidence_scores( delta=workers_labels, w=w, n_workers=self.n_workers )
 
 				return agg_labels, confidence_scores
 
@@ -797,10 +798,7 @@ class AIM1_3:
 
 		# 	return pd.concat( [workers_strength, weights.PROPOSED * n_workers, weights_Tao_mean], axis=1)
 
-		# Setting the random seed
-		np.random.seed(seed + 1)
-
-		aim1_3 = cls(data=data, config=config, feature_columns=feature_columns, n_workers=n_workers)
+		aim1_3 = cls(data=data, config=config, feature_columns=feature_columns, n_workers=n_workers, seed=seed)
 
 		# calculating uncertainty and predicted probability values
 		preds_all, uncertainties_all, true_labels, workers_strength = aim1_3.aim1_3_meauring_probs_uncertainties()
@@ -821,12 +819,12 @@ class AIM1_3:
 		# merge workers_strength and weights
 		# merge_worker_strengths_and_weights()
 
-		return Result2Type( proposeds		 = results_proposed,
-							benchmarks       = results_benchmarks,
-							weights          = weights,
+		return Result2Type( proposed		 = results_proposed,
+							benchmark        = results_benchmarks,
+							weight           = weights,
 							workers_strength = workers_strength,
 							n_workers        = n_workers,
-							true_labels      = true_labels )
+							true_label       = true_labels )
 
 
 	@staticmethod
@@ -882,12 +880,12 @@ class AIM1_3:
 		lsf = LoadSaveFile(path_main / f'{metric_name}.xlsx')
 
 		if self.config.output.mode is OutputModes.CALCULATE:
-			params = {'seed'           : seed,
-					  'n_workers'      : n_workers,
-					  'config'         : self.config,
-					  'data'           : self.data,
-					  'feature_columns': self.feature_columns,
-					  'use_parallelization_benchmarks':self.config.simulation.use_parallelization}
+			params = {	'seed'           : seed,
+						'n_workers'      : n_workers,
+						'config'         : self.config,
+						'data'           : self.data,
+						'feature_columns': self.feature_columns,
+						'use_parallelization_benchmarks':self.config.simulation.use_parallelization}
 
 			df = AIM1_3.core_measurements(**params).workers_strength.set_index('workers_strength').sort_index()
 
@@ -897,7 +895,7 @@ class AIM1_3:
 
 		return lsf.load(header=0)
 
-
+	"""
 	def get_confidence_scores(self, outputs) -> dict[str, dict[StrategyNames, dict[str, pd.DataFrame]]]:
 		# TODO need to fix this function according to new changes.
 
@@ -919,7 +917,7 @@ class AIM1_3:
 				return df
 
 			inF     = get( 'F' )
-			inF_pos = get( 'P_pos' ) if strategy == StrategyNames.FREQ else get( 'I' )
+			inF_pos = get( 'F_pos' )
 
 			# inF_mean_over_seeds     = inF.T.groupby(level=0).mean().T
 			# inF_pos_mean_over_seeds = inF_pos.T.groupby(level=0).mean().T
@@ -953,12 +951,10 @@ class AIM1_3:
 			return F_dict
 
 		return { key: LoadSaveFile(path_main / f'{key}.pkl').load()  for key in DICT_KEYS }
-
+	"""
 
 	@classmethod
 	def calculate_one_dataset(cls, config: 'Settings', dataset_name: DatasetNames=DatasetNames.IONOSPHERE) -> ResultComparisonsType:
-
-		np.random.seed(0)
 
 		config.dataset.dataset_name = dataset_name
 
@@ -971,16 +967,13 @@ class AIM1_3:
 		outputs = aim1_3.get_outputs()
 
 		# measuring the confidence scores
-		findings_confidence_score = aim1_3.get_confidence_scores(outputs)
+		# findings_confidence_score = aim1_3.get_confidence_scores(outputs)
 
 		# measuring the worker strength weight relationship for proposed and Tao
 		weight_strength_relation = aim1_3.worker_weight_strength_relation(seed=0, n_workers=10 )
 
 
-		return ResultComparisonsType( weight_strength_relation  = weight_strength_relation,
-									  findings_confidence_score = findings_confidence_score,
-									  outputs                   = outputs,
-									  config                    = config )
+		return ResultComparisonsType( weight_strength_relation=weight_strength_relation, outputs=outputs, config=config )
 
 
 	@classmethod

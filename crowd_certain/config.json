@@ -19,7 +19,7 @@
     "low_dis"                 : 0.4,
     "num_simulations"         : 2,
     "num_seeds"               : 2,
-    "use_parallelization"     : false,
+    "use_parallelization"     : true,
     "max_parallel_workers"    : 10,
     "simulation_methods"      :"random_states"
   },

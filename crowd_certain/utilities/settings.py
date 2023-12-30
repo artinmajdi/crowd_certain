@@ -4,8 +4,8 @@ import pathlib
 import sys
 from typing import Any, TypeAlias, Union
 import numpy as np
-
-from pydantic import BaseModel, confloat, conint
+from typing_extensions import Annotated
+from pydantic import BaseModel, confloat, conint, Field
 from pydantic.functional_validators import field_validator
 import sklearn
 
@@ -17,15 +17,15 @@ PathNoneType: TypeAlias = Union[pathlib.Path, None]
 class DatasetSettings(BaseModel):
 	data_mode         : DataModes          = DataModes.TRAIN
 	path_all_datasets : pathlib.Path       = pathlib.Path('datasets')
-	dataset_name      : DatasetNames       = None
-	datasetNames      : list[DatasetNames] = None
+	dataset_name      : DatasetNames       = DatasetNames.KR_VS_KP
+	datasetNames      : list[DatasetNames] = Field(default=None)
 	non_null_samples  : bool               = True
-	train_test_ratio  : confloat(ge        = 0.0                                                         , le = 1.0) = 0.7
 	random_state      : int                = 0
 	read_mode         : ReadMode           = ReadMode.READ_ARFF
 	shuffle           : bool               = False
-	augmentation_count: conint(ge          = 0)                                                           = 1
 	main_url          : str                = "https://archive.ics.uci.edu/ml/machine-learning-databases/"
+	train_test_ratio  : Annotated[float,Field(strict=True, ge=0.0, le=1.0)] = 0.7
+	augmentation_count: Annotated[int,  Field(strict=True, ge=0)] 			= 1
 
 	@field_validator('datasetNames', mode='before')
 	def check_dataset_names(cls, v: Union[list[DatasetNames], str]):
