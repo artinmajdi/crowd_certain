@@ -197,7 +197,7 @@ class BenchmarkTechniques:
 
 @dataclass
 class ResultType:
-	confidence_scores: pd.DataFrame
+	confidence_scores: dict[str, pd.DataFrame]
 	aggregated_labels: pd.DataFrame
 	metrics 		 : pd.DataFrame
 
@@ -211,12 +211,12 @@ class WeightType:
 
 @dataclass
 class Result2Type:
-	proposeds       : ResultType
-	benchmarks      : ResultType
-	weights         : WeightType
+	proposed        : ResultType
+	benchmark       : ResultType
+	weight          : WeightType
 	workers_strength: pd.DataFrame
 	n_workers       : int
-	true_labels     : dict[str, pd.DataFrame]
+	true_label      : dict[str, pd.DataFrame]
 
 
 @dataclass
@@ -263,10 +263,10 @@ class AIM1_3:
 
 			elif tech is UncertaintyTechniques.ENTROPY:
 				# Normalize each row to sum to 1
-				# >> df_normalized = df.div(df.sum(axis=1) + epsilon, axis=0)
+				df_normalized = df.div(df.sum(axis=1) + epsilon, axis=0)
 				# Calculate entropy
-				# >> uncertainties[mode][LB] = - (df_normalized * np.log(df_normalized + epsilon)).sum(axis=1)
-				entropy = df.apply(lambda x: scipy.stats.entropy(x), axis=1).fillna(0)
+				entropy = - (df_normalized * np.log(df_normalized + epsilon)).sum(axis=1)
+				# entropy = df.apply(lambda x: scipy.stats.entropy(x), axis=1).fillna(0)
 
 				# normalizing entropy values to be between 0 and 1
 				df_uncertainties[tech.value] = entropy / np.log(df.shape[1])
@@ -339,20 +339,19 @@ class AIM1_3:
 		return consistency
 
 	@staticmethod
-	def get_AUC_ACC_F1(aggregated_labels: pd.DataFrame, truth: pd.Series) -> pd.DataFrame:
+	def get_AUC_ACC_F1(aggregated_labels: pd.Series, truth: pd.Series) -> pd.DataFrame:
 
-		metrics = pd.DataFrame(index=list(EvaluationMetricNames), columns=aggregated_labels.columns)
+		metrics = pd.Series(index=EvaluationMetricNames.values())
 
 		non_null = ~truth.isnull()
 		truth_notnull = truth[non_null].to_numpy()
 
 		if (len(truth_notnull) > 0) and (np.unique(truth_notnull).size == 2):
 
-			for m in aggregated_labels.columns:
-				yhat = (aggregated_labels[m] > 0.5).astype(int)[non_null]
-				metrics[m][EvaluationMetricNames.AUC] = sk_metrics.roc_auc_score( truth_notnull, yhat)
-				metrics[m][EvaluationMetricNames.ACC] = sk_metrics.accuracy_score(truth_notnull, yhat)
-				metrics[m][EvaluationMetricNames.F1 ] = sk_metrics.f1_score( 	  truth_notnull, yhat)
+			yhat = (aggregated_labels > 0.5).astype(int)[non_null]
+			metrics[EvaluationMetricNames.AUC.value] = sk_metrics.roc_auc_score( truth_notnull, yhat)
+			metrics[EvaluationMetricNames.ACC.value] = sk_metrics.accuracy_score(truth_notnull, yhat)
+			metrics[EvaluationMetricNames.F1.value ] = sk_metrics.f1_score( 	 truth_notnull, yhat)
 
 		return metrics
 
@@ -550,8 +549,8 @@ class AIM1_3:
 
 			T2.loc[preds[worker].values != prob_mv_binary.values, worker] = 0
 
-			w_hat[worker] = pd.DataFrame.from_dict({ proposed_techniques[0]: T1[worker].mean(axis=0),
-												 	 proposed_techniques[1]: T2[worker].mean(axis=0)}, orient='index')
+			w_hat[worker] = pd.DataFrame.from_dict({proposed_techniques[0]: T1[worker].mean(axis=0),
+													proposed_techniques[1]: T2[worker].mean(axis=0)}, orient='index')
 
 			# w_hat.loc[proposed_techniques[0],worker] = T1[worker].mean(axis=0)
 			# w_hat[worker].iloc[proposed_techniques[1]] = T2[worker].mean(axis=0)
@@ -634,7 +633,7 @@ class AIM1_3:
 
 
 	@staticmethod
-	def calculate_confidence_scores(delta, w: Union[pd.DataFrame, pd.Series], n_workers) -> pd.Series:
+	def calculate_confidence_scores(delta, w: Union[pd.DataFrame, pd.Series], n_workers) -> Tuple[pd.Series, pd.Series]:
 		"""_summary_
 
 		Args:
@@ -653,7 +652,7 @@ class AIM1_3:
 		def get_freq():
 			out = pd.DataFrame({'P_pos':P_pos,'P_neg':P_neg})
 			# F[out['P_pos'] < out['P_neg']] = out['P_neg'][out['P_pos'] < out['P_neg']]
-			return out.max(axis=1)
+			return out.max(axis=1), P_pos
 
 		def get_beta():
 			out = pd.DataFrame({'P_pos':P_pos,'P_neg':P_neg})
@@ -677,7 +676,7 @@ class AIM1_3:
 			get_F_lambda = lambda row: max(row['I'], 1-row['I'])
 			# F = I.copy()
 			# F[I < 0.5] = (1 - F)[I < 0.5]
-			return out.apply(get_F_lambda, axis=1)
+			return out.apply(get_F_lambda, axis=1), out['I']
 
 		return pd.DataFrame( {StrategyNames.FREQ.value: get_freq(), StrategyNames.BETA.value: get_beta()} ).unstack()
 
@@ -711,14 +710,14 @@ class AIM1_3:
 			agg_labels = pd.DataFrame(columns=weights.PROPOSED.index, index=preds.index)
 
 			index = pd.MultiIndex.from_product([ StrategyNames.values() , preds.index ], names=['strategies', 'indices'])
-			confidence_scores = pd.DataFrame(columns=weights.PROPOSED.index, index=index)
+			confidence_scores = {m: pd.DataFrame(columns=weights.PROPOSED.index, index=index) for m in ['F', 'F_pos']}
 
-			metrics = pd.DataFrame(columns=weights.PROPOSED.index, index=list(EvaluationMetricNames))
+			metrics = pd.DataFrame(columns=weights.PROPOSED.index, index=EvaluationMetricNames.values())
 
 			for cln in weights.PROPOSED.index:
 				agg_labels[cln] = (preds * weights.PROPOSED.T[cln]).sum(axis=1)
 
-				confidence_scores[cln] = AIM1_3.calculate_confidence_scores(delta=preds, w=weights.PROPOSED.T[cln], n_workers=self.n_workers )
+				confidence_scores['F'][cln], confidence_scores['F_pos'][cln] = AIM1_3.calculate_confidence_scores(delta=preds, w=weights.PROPOSED.T[cln], n_workers=self.n_workers )
 
 				# Measuring the metrics
 				metrics[cln] = AIM1_3.get_AUC_ACC_F1(aggregated_labels=agg_labels[cln], truth=true_labels['test'].truth)
@@ -737,18 +736,18 @@ class AIM1_3:
 				aggregated_labels_benchmarks = pd.DataFrame(columns = MainBenchmarks 											 , index = workers_labels.index)
 			"""
 
-			def get_v_F_Tao_sheng() -> Tuple[pd.DataFrame, pd.DataFrame]:
+			def get_v_F_Tao_sheng() -> Tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
 
 				def initialize():
-					nonlocal agg_labels, F
+					nonlocal agg_labels, confidence_scores
 
 					index   = pd.MultiIndex.from_product([StrategyNames.values(), workers_labels.index], names=['strategies', 'indices'])
-					F = pd.DataFrame(columns=MainBenchmarks.values(), index=index)
+					confidence_scores = {m: pd.DataFrame(columns=MainBenchmarks.values(), index=index) for m in ['F', 'F_pos']}
 
 					agg_labels = pd.DataFrame(index=workers_labels.index, columns=MainBenchmarks.values())
-					return agg_labels, F
+					return agg_labels, confidence_scores
 
-				agg_labels, F = initialize()
+				agg_labels, confidence_scores = initialize()
 
 				for m in MainBenchmarks:
 
@@ -756,9 +755,9 @@ class AIM1_3:
 
 					agg_labels[m.value] = (workers_labels * w).sum(axis=1)
 
-					F[m.value] = AIM1_3.calculate_confidence_scores(delta=workers_labels, w=w, n_workers=self.n_workers )
+					confidence_scores['F'][m.value], confidence_scores['F_pos'][m.value] = AIM1_3.calculate_confidence_scores( delta=workers_labels, w=w, n_workers=self.n_workers )
 
-				return agg_labels, F
+				return agg_labels, confidence_scores
 
 			v_benchmarks, F_benchmarks = get_v_F_Tao_sheng()
 
@@ -767,7 +766,8 @@ class AIM1_3:
 			v_benchmarks = pd.concat( [v_benchmarks, v_other_benchmarks], axis=1)
 
 			# Measuring the metrics
-			metrics_benchmarks = AIM1_3.get_AUC_ACC_F1(aggregated_labels=v_benchmarks, truth=true_labels['test'].truth)
+
+			metrics_benchmarks = pd.DataFrame({cln: AIM1_3.get_AUC_ACC_F1(aggregated_labels=v_benchmarks[cln], truth=true_labels['test'].truth) for cln in v_benchmarks.columns})
 
 			return ResultType(aggregated_labels=v_benchmarks, confidence_scores=F_benchmarks, metrics=metrics_benchmarks)
 
@@ -790,12 +790,12 @@ class AIM1_3:
 			Note: A separate boolean flag is used for use_parallelization_benchmarks.
 			This will ensure we only apply parallelization when called through worker_weight_strength_relation function """
 
-		def merge_worker_strengths_and_weights() -> pd.DataFrame:
-			nonlocal workers_strength
+		# def merge_worker_strengths_and_weights() -> pd.DataFrame:
+		# 	nonlocal workers_strength
 
-			weights_Tao_mean  = weights.TAO.mean().to_frame().rename(columns={0: MainBenchmarks.TAO})
+		# 	weights_Tao_mean  = weights.TAO.mean().to_frame(MainBenchmarks.TAO.value)
 
-			return pd.concat( [workers_strength, weights.PROPOSED * n_workers, weights_Tao_mean], axis=1)
+		# 	return pd.concat( [workers_strength, weights.PROPOSED * n_workers, weights_Tao_mean], axis=1)
 
 		# Setting the random seed
 		np.random.seed(seed + 1)
@@ -819,9 +819,9 @@ class AIM1_3:
 																						use_parallelization_benchmarks = use_parallelization_benchmarks)
 
 		# merge workers_strength and weights
-		merge_worker_strengths_and_weights()
+		# merge_worker_strengths_and_weights()
 
-		return Result2Type( proposeds= results_proposed,
+		return Result2Type( proposeds		 = results_proposed,
 							benchmarks       = results_benchmarks,
 							weights          = weights,
 							workers_strength = workers_strength,
@@ -850,13 +850,12 @@ class AIM1_3:
 			outputs = {f'NL{nl}':np.full( self.config.simulation.num_seeds, np.nan ).tolist() for nl in self.config.simulation.workers_list }
 
 			for args, values in core_results:
-				outputs[ 'NL'+args['nl'] ][ args['seed'] ] = values
+				outputs[ f'NL{args["nl"]}' ][ args['seed'] ] = values
 
 			if self.config.output.save:
 				LoadSaveFile(path).dump(outputs)
 
 			return outputs
-
 
 		if self.config.output.mode is OutputModes.CALCULATE:
 
@@ -900,6 +899,7 @@ class AIM1_3:
 
 
 	def get_confidence_scores(self, outputs) -> dict[str, dict[StrategyNames, dict[str, pd.DataFrame]]]:
+		# TODO need to fix this function according to new changes.
 
 		path_main = self.config.output.path / f'confidence_score/{self.config.dataset.dataset_name}'
 
