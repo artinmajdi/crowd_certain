@@ -56,6 +56,7 @@ class LoadSaveFile:
 		elif self.path.suffix == '.xlsx':
 			file.to_excel(self.path, index=index)
 
+
 # @functools.cache
 class BenchmarkTechniques:
 
@@ -224,6 +225,7 @@ class ResultComparisonsType:
 	outputs                   : dict
 	config                    : 'Settings'
 	weight_strength_relation  : pd.DataFrame
+
 
 @dataclass
 class AIM1_3:

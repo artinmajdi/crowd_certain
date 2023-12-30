@@ -22,3 +22,4 @@ if __name__ == '__main__':
 	# p.dump_stats(filename='needs_profiling.prof')
 
 	main()
+	print(' sf s  s')

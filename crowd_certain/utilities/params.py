@@ -1,35 +1,54 @@
 from __future__ import annotations
 import enum
+from typing import Type, TypeVar, Callable, List, Iterator
 
+T = TypeVar('T', bound='EnumWithHelpers')
+class EnumWithHelpers(enum.Enum):
+    @classmethod
+    def members(cls: Type[T]) -> List[T]:
+        return list(cls.__members__.values())
 
-def members(cls):
+    @classmethod
+    def all(cls: Type[T]) -> List[T]:
+        return list(cls)
 
-	# Add the members class method
-	cls.members = classmethod(lambda cls2: list(cls2.__members__))
+    @classmethod
+    def values(cls: Type[T]) -> List[str]:
+        return [member.value for member in cls]
 
-	# Adding all options in a list
-	# This can be achieved by calling list(YourEnum)
-	# cls.all = classmethod(lambda cls2: [cls2[n] for n in list(cls2.__members__)])
-	cls.all = classmethod(lambda cls2: list(cls2))
+    def __iter__(self: T) -> Iterator[str]:
+        return iter(self.__members__.keys())
 
-	cls.values = classmethod(lambda cls2: [n.value for n in cls2])
+    def __str__(self) -> str:
+        return self.value
 
-	# Make the class iterable
-	cls.__iter__ = lambda self: iter(self.__members__.keys())
+# def members(cls):  # Untyped
 
-	# Overwrite the __str__ method, to output only the name of the member
-	cls.__str__ = lambda self: self.value
-	return cls
+# 	# Add the members class method
+# 	cls.members: Callable[[], list[enum.Enum]] = classmethod(lambda cls2: list(cls2.__members__))
 
-@members
-class ReadMode(enum.Enum):
+# 	# Adding all options in a list
+# 	# This can be achieved by calling list(YourEnum)
+# 	# cls.all = classmethod(lambda cls2: [cls2[n] for n in list(cls2.__members__)])
+
+# 	cls.values: Callable[[], list[str]]  = classmethod(lambda cls2: [n.value for n in cls2])
+
+# 	# Make the class iterable
+# 	# cls.__iter__: Callable[[], Iterator[str]] = lambda self: iter(self.__members__.keys())
+
+# 	# Overwrite the __str__ method, to output only the name of the member
+# 	# cls.__str__: Callable[[], str] = lambda self: self.value
+# 	return cls
+
+# @members
+class ReadMode(EnumWithHelpers):
 	READ_ARFF = 'read_arff'
 	READ      = 'read'
 	DOWNLOAD  = 'download'
 
 
-@members
-class DatasetNames(enum.Enum):
+# @members
+class DatasetNames(EnumWithHelpers):
 	KR_VS_KP    = "kr-vs-kp"
 	MUSHROOM    = "mushroom"
 	IRIS        = "iris"
@@ -41,15 +60,15 @@ class DatasetNames(enum.Enum):
 	VOTE        = "vote"
 	IONOSPHERE  = "ionosphere"
 
-@members
-class DataModes(enum.Enum):
+# @members
+class DataModes(EnumWithHelpers):
 	TRAIN = 'train'
 	TEST  = 'test'
 	ALL   = 'all'
 
 
-@members
-class UncertaintyTechniques(enum.Enum):
+# @members
+class UncertaintyTechniques(EnumWithHelpers):
 	STD     = "standard_deviation"
 	ENTROPY = "entropy"
 	CV		= "coefficient_of_variation"
@@ -60,32 +79,32 @@ class UncertaintyTechniques(enum.Enum):
 	# CP      = "conformal_prediction"
 
 
-@members
-class ConsistencyTechniques(enum.Enum):
+# @members
+class ConsistencyTechniques(EnumWithHelpers):
 	ONE_MINUS_UNCERTAINTY = "one_minus_uncertainty"
 	ONE_DIVIDED_BY_UNCERTAINTY = "one_divided_by_uncertainty"
 
-@members
-class EvaluationMetricNames(enum.Enum):
+# @members
+class EvaluationMetricNames(EnumWithHelpers):
 	ACC = 'ACC'
 	AUC = 'AUC'
 	F1  = 'F1'
 	THRESHOLD = 'THRESHOLD'
 
 
-@members
-class FindingNames(enum.Enum):
+# @members
+class FindingNames(EnumWithHelpers):
 	TRUTH = 'ground_truth'
 	PRED  = 'predicted_probabilities'
 
 
-@members
-class OutputModes(enum.Enum):
+# @members
+class OutputModes(EnumWithHelpers):
 	CALCULATE   = "calculate"
 	LOAD_LOCAL  = "load_local"
 
-@members
-class OtherBenchmarkNames(enum.Enum):
+# @members
+class OtherBenchmarkNames(EnumWithHelpers):
 	# GLAD = 'GLAD'
 	KOS    = 'KOS'
 	MACE   = 'MACE'
@@ -96,31 +115,31 @@ class OtherBenchmarkNames(enum.Enum):
 	DS     = 'DawidSkene'
 
 
-@members
-class MainBenchmarks(enum.Enum):
+# @members
+class MainBenchmarks(EnumWithHelpers):
 	TAO	  = 'Tao'
 	SHENG = 'Sheng'
 
 
-@members
-class ProposedTechniqueNames(enum.Enum):
+# @members
+class ProposedTechniqueNames(EnumWithHelpers):
 	PROPOSED = 'Crowd-Certain Without Penalization'
 	PROPOSED_PENALIZED = 'Crowd-Certain'
 
 
-@members
-class StrategyNames(enum.Enum):
+# @members
+class StrategyNames(EnumWithHelpers):
 	FREQ = 'freq'
 	BETA = 'beta'
 
-@members
-class ConfidenceScoreNames(enum.Enum):
+# @members
+class ConfidenceScoreNames(EnumWithHelpers):
 	ECE   = 'ece score'
 	BRIER = 'brier score loss'
 
 
-@members
-class SimulationMethods(enum.Enum):
+# @members
+class SimulationMethods(EnumWithHelpers):
 	RANDOM_STATES = "random_states"
 	MULTIPLE_CLASSIFIERS = "multiple_classifiers"
 
