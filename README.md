@@ -45,10 +45,10 @@ After installation, activate the environment with:
 
 ```bash
 # On Unix/Linux/macOS:
-source ./crowd_certain/activate_env.sh
+source ./crowd_certain/config/activate_env.sh
 
 # On Windows:
-crowd_certain\activate_env.bat
+crowd_certain\config\activate.bat
 ```
 
 ### Basic Usage
@@ -72,22 +72,14 @@ The project includes a Streamlit-based dashboard that provides a user-friendly i
 To run the dashboard:
 
 ```bash
-# Install all dependencies (if not already installed)
-pip install -r requirements.txt
-
-# Option 1: Using the entry point script (recommended)
-python crowd_certain/run_streamlit.py
-# Or directly execute it
-./crowd_certain/run_streamlit.py
-
-# Option 2: Using the provided scripts
+# Option 1: Using the provided scripts (recommended)
 # On Unix/Linux/macOS:
 ./crowd_certain/scripts/run_dashboard.sh
 
 # On Windows:
 crowd_certain\scripts\run_dashboard.bat
 
-# Option 3: Directly with Streamlit
+# Option 2: Directly with Streamlit
 streamlit run crowd_certain/utilities/dashboard.py
 ```
 
@@ -106,6 +98,13 @@ For more details, see the [Dashboard Documentation](crowd_certain/docs/DASHBOARD
 ```bash
 crowd-certain/
 ├── crowd_certain/       # Main package code
+│   ├── config/          # Configuration files
+│   │   ├── config.json  # Main configuration
+│   │   ├── config_default.json # Default configuration
+│   │   ├── requirements.txt # Python dependencies (pip)
+│   │   ├── environment.yml # Conda environment specification
+│   │   ├── activate_env.sh # Unix environment activation script
+│   │   └── activate.bat # Windows environment activation script
 │   ├── datasets/        # Dataset handling
 │   ├── docs/            # Documentation
 │   ├── examples/        # Example scripts
@@ -116,12 +115,8 @@ crowd-certain/
 │   │   ├── install.bat  # Windows installation script
 │   │   ├── run_dashboard.sh # Unix dashboard script
 │   │   └── run_dashboard.bat# Windows dashboard script
-│   ├── utilities/       # Utility functions and classes
-│   │   └── dashboard.py # Streamlit dashboard
-│   ├── activate_env.sh  # Environment activation script
-│   └── run_streamlit.py # Entry point for the dashboard
-├── requirements.txt     # Python dependencies (pip)
-└── requirements.yml     # Conda environment specification
+│   └── utilities/       # Utility functions and classes
+│       └── dashboard.py # Streamlit dashboard
 ```
 
 For more information about the example scripts, see the [Examples Documentation](crowd_certain/docs/EXAMPLES.md).

@@ -14,13 +14,14 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import sys
 import os
+import shutil
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union
 
 # Import directly from the utilities module since we're now in the same package
 from crowd_certain.utilities.utils import AIM1_3
 from crowd_certain.utilities import params
-from crowd_certain.utilities.settings import Settings, get_settings
+from crowd_certain.utilities.settings import Settings, get_settings, find_config_file, revert_to_default_config
 from crowd_certain.utilities.utils import ResultComparisonsType
 from crowd_certain.utilities.dataset_loader import find_dataset_path
 
@@ -68,7 +69,7 @@ class SidebarConfig:
         # Load existing configuration if available
         try:
             self.config = get_settings()
-            print("Loaded existing configuration from config.json")
+            # print("Loaded existing configuration from config.json")
 
         except Exception as e:
             print(f"Could not load existing configuration: {str(e)}. Using default values.")
@@ -122,7 +123,7 @@ class SidebarConfig:
         self.auto_download = True  # Default to True for better user experience
 
         # Get the correct dataset path using the shared function
-        self.dataset_path = find_dataset_path(getattr(self.config.dataset, 'path_all_datasets', Path(__file__).parent.parent / 'datasets'), verbose=True)
+        self.dataset_path = find_dataset_path(getattr(self.config.dataset, 'path_all_datasets', Path(__file__).parent.parent / 'datasets'))
 
     def save_config(self, file_path=None):
         """Save the current configuration to a file."""
@@ -131,7 +132,7 @@ class SidebarConfig:
 
         # Determine the file path
         if file_path is None:
-            file_path = Path.cwd() / "config.json"
+            file_path = find_config_file()
 
         # Save the configuration
         try:
@@ -139,6 +140,34 @@ class SidebarConfig:
             return True, f"Configuration saved to {file_path}"
         except Exception as e:
             return False, f"Error saving configuration: {str(e)}"
+
+    def revert_to_default_config(self):
+        """Revert to the default configuration."""
+        try:
+            # Use the revert_to_default_config function
+            success, config_path = revert_to_default_config()
+
+            if not success:
+                return False, f"Failed to revert to default configuration"
+
+            # Reload the configuration
+            self.config = get_settings()
+
+            # Update UI values from the new config
+            self.selected_dataset_values = [str(ds) for ds in self.config.dataset.datasetNames]
+            self.n_workers_min           = self.config.simulation.n_workers_min_max[0]
+            self.n_workers_max           = self.config.simulation.n_workers_min_max[1]
+            self.low_quality             = self.config.simulation.low_dis
+            self.high_quality            = self.config.simulation.high_dis
+            self.num_seeds               = self.config.simulation.num_seeds
+            self.use_parallelization  = getattr(self.config.simulation, 'use_parallelization', True)
+            self.max_parallel_workers = getattr(self.config.simulation, 'max_parallel_workers', min(4, os.cpu_count() or 4))
+            self.selected_uncertainty_values = [tech.value for tech in self.config.technique.uncertainty_techniques]
+            self.selected_consistency_values = [tech.value for tech in self.config.technique.consistency_techniques]
+
+            return True, f"Configuration reverted to default"
+        except Exception as e:
+            return False, f"Error reverting to default configuration: {str(e)}"
 
     def render(self) -> None:
         """Render the sidebar configuration options."""
@@ -320,13 +349,30 @@ class SidebarConfig:
         # Update the config with values from the UI
         self.update_config()
 
-        # Add save configuration button
-        if st.sidebar.button("Save Configuration", type="primary"):
-            success, message = self.save_config()
-            if success:
-                st.sidebar.success(message)
-            else:
-                st.sidebar.error(message)
+        # Configuration management buttons
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("##### Configuration Management")
+
+        # Create two columns for the buttons
+        col1, col2 = st.sidebar.columns(2)
+
+        # Save Configuration button
+        with col1:
+            if st.button("Save Config", type="primary"):
+                success, message = self.save_config()
+                if success:
+                    st.success(message)
+                else:
+                    st.error(message)
+
+        # Revert to Default button
+        with col2:
+            if st.button("Revert to Default", type="secondary"):
+                success, message = self.revert_to_default_config()
+                if success:
+                    st.success(message)
+                else:
+                    st.error(message)
 
     def get_selected_datasets(self) -> List[params.DatasetNames]:
         """Get the selected datasets as DatasetNames enums."""
@@ -365,22 +411,6 @@ class SidebarConfig:
 
         return self.config
 
-    # def save_config(self, file_path=None):
-    #     """Save the current configuration to a file."""
-    #     # Update the config with current UI values
-    #     config = self.update_config()
-
-    #     # Determine the file path
-    #     if file_path is None:
-    #         file_path = Path.cwd() / "config.json"
-
-    #     # Save the configuration
-    #     try:
-    #         config.save(file_path)
-    #         return True, f"Configuration saved to {file_path}"
-    #     except Exception as e:
-    #         return False, f"Error saving configuration: {str(e)}"
-
 
 class SimulationRunner:
     """Handles running simulations and displaying results."""
@@ -418,9 +448,6 @@ class SimulationRunner:
                 # Check if dataset exists and show appropriate message
                 dataset_dir = settings.dataset.path_all_datasets / dataset_value
                 dataset_file = dataset_dir / f"{dataset_value}.csv"
-
-                # Display dataset path information
-                st.info(f"Looking for dataset at: {dataset_file}")
 
                 if not dataset_file.exists():
                     if self.config.auto_download:

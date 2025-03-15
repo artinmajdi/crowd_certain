@@ -81,12 +81,12 @@ if "%choice%"=="1" (
     echo Instead, we'll create a small activation script for you.
 
     :: Create activation script
-    echo @echo off > activate_env.bat
-    echo call .venv\Scripts\activate.bat >> activate_env.bat
+    echo @echo off > crowd_certain\config\activate.bat
+    echo call .venv\Scripts\activate.bat >> crowd_certain\config\activate.bat
 
     echo.
     echo To activate the virtual environment, run:
-    echo activate_env.bat
+    echo crowd_certain\config\activate.bat
 
 ) else if "%choice%"=="3" (
     echo.
@@ -94,12 +94,12 @@ if "%choice%"=="1" (
     echo Instead, we'll create a small activation script for you.
 
     :: Create activation script for conda
-    echo @echo off > activate_env.bat
-    echo call conda activate crowd-certain >> activate_env.bat
+    echo @echo off > crowd_certain\config\activate.bat
+    echo call conda activate crowd-certain >> crowd_certain\config\activate.bat
 
     echo.
     echo To activate the conda environment, run:
-    echo activate_env.bat
+    echo crowd_certain\config\activate.bat
 )
 
 exit /b 0
@@ -165,28 +165,23 @@ if %ERRORLEVEL% NEQ 0 (
     conda install -c conda-forge mamba -y
 )
 
-:: Check if conda environment already exists
-conda env list | findstr /C:"crowd-certain" >nul
-if %ERRORLEVEL% EQU 0 (
-    echo A conda environment 'crowd-certain' already exists.
-    set /p use_existing="Do you want to use the existing environment? (y/n): "
-    if /i "%use_existing%"=="y" (
-        echo Using existing conda environment.
+REM Create conda environment
+if defined CONDA_DEFAULT_ENV (
+    if /I not "%CONDA_DEFAULT_ENV%"=="base" (
+        echo Updating existing conda environment %CONDA_DEFAULT_ENV%...
+        echo Removing existing conda environment...
+        conda env remove -n crowd-certain
+        echo Creating new conda environment from environment.yml...
+        mamba env update --file crowd_certain\config\environment.yml
     ) else (
-        set /p delete_existing="Do you want to remove the existing environment and create a new one? (y/n): "
-        if /i "%delete_existing%"=="y" (
-            echo Removing existing conda environment...
-            conda env remove -n crowd-certain
-            echo Creating new conda environment from environment.yml...
-            mamba env update --file environment.yml
-        ) else (
-            echo Installation aborted.
-            exit /b 1
-        )
+        REM Create a new environment
+        echo Creating conda environment from environment.yml...
+        mamba env update --file crowd_certain\config\environment.yml
     )
 ) else (
+    REM Create a new environment
     echo Creating conda environment from environment.yml...
-    mamba env update --file environment.yml
+    mamba env update --file crowd_certain\config\environment.yml
 )
 
 :: Activate the conda environment

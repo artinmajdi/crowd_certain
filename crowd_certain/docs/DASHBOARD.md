@@ -15,36 +15,64 @@ This is a Streamlit-based dashboard for the Crowd-Certain library, which provide
 
 ## Installation
 
-1. Make sure you have Python 3.10+ installed
-2. Install the required dependencies:
+### Option 1: Using the installation script (recommended)
+
+Run the installation script from the project root:
 
 ```bash
-# From the project root directory
-pip install -r requirements.txt
+# On Unix/Linux/macOS:
+./crowd_certain/scripts/install.sh
+
+# On Windows:
+crowd_certain\scripts\install.bat
 ```
+
+### Option 2: Manual installation
+
+1. Create and activate a virtual environment (recommended):
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   ```
+
+2. Install the required dependencies:
+   ```bash
+   pip install -r crowd_certain/config/requirements.txt
+   ```
 
 ## Running the Dashboard
 
-From the project root directory, you can run:
+### Option 1: Using the run script (recommended)
+
+Run the dashboard script from the project root:
 
 ```bash
-# Option 1: Using the entry point script (recommended)
-python crowd_certain/run_streamlit.py
-# Or directly execute it
-./crowd_certain/run_streamlit.py
-
-# Option 2: Using the provided scripts
-# On Unix/Linux/macOS
+# On Unix/Linux/macOS:
 ./crowd_certain/scripts/run_dashboard.sh
 
-# On Windows
+# On Windows:
 crowd_certain\scripts\run_dashboard.bat
-
-# Option 3: Directly with Streamlit
-streamlit run crowd_certain/utilities/dashboard.py
 ```
 
-The dashboard will open in your default web browser at `http://localhost:8501`.
+### Option 2: Manual execution
+
+1. Activate your environment if not already activated:
+   ```bash
+   source ./crowd_certain/config/activate_env.sh  # On Windows: crowd_certain\config\activate.bat
+   ```
+
+2. Run the dashboard:
+   ```bash
+   python -m crowd_certain.utilities.dashboard
+   ```
+
+## Configuration
+
+The dashboard uses the configuration file located at `crowd_certain/config/config.json`. You can modify this file directly or use the dashboard interface to update settings.
+
+### Default Configuration
+
+A default configuration file is provided at `crowd_certain/config/config_default.json`. You can revert to this configuration using the "Revert to Default Config" button in the dashboard.
 
 ## Usage
 

@@ -13,7 +13,7 @@ set "PROJECT_ROOT=%CROWD_CERTAIN_ROOT%..\"
 where streamlit >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo Streamlit is not installed. Installing dependencies...
-    pip install -r "%PROJECT_ROOT%requirements.txt"
+    pip install -r "%PROJECT_ROOT%crowd_certain\config\requirements.txt"
     echo.
 )
 

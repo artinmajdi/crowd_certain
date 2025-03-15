@@ -14,7 +14,7 @@ class Dict2Class(object):
         for key in my_dict:
             setattr(self, key, my_dict[key])
 
-def find_dataset_path(base_path: pathlib.Path = None, verbose: bool = True) -> pathlib.Path:
+def find_dataset_path(base_path: pathlib.Path = None, debug: bool = False) -> pathlib.Path:
     """
     Find the correct dataset path, trying alternative paths if the specified one doesn't exist.
 
@@ -27,12 +27,12 @@ def find_dataset_path(base_path: pathlib.Path = None, verbose: bool = True) -> p
     """
     # If base_path exists, return it immediately
     if base_path is not None and base_path.exists():
-        if verbose:
+        if debug:
             print(f"Using existing dataset path: {base_path}")
         return base_path
 
     # If base_path doesn't exist, check alternative paths
-    if verbose:
+    if debug:
         print(f"Dataset directory {base_path} does not exist. Checking alternative paths...")
 
     # Try alternative paths if the specified one doesn't exist
@@ -56,12 +56,12 @@ def find_dataset_path(base_path: pathlib.Path = None, verbose: bool = True) -> p
     # Check each alternative path
     for alt_path in alt_paths:
         if alt_path.exists():
-            if verbose:
+            if debug:
                 print(f"Using alternative dataset path: {alt_path}")
             return alt_path
 
     # If no alternative paths exist, create and return the base_path
-    if verbose:
+    if debug:
         print(f"No alternative dataset paths found.")
 
     if base_path is None:
@@ -69,7 +69,7 @@ def find_dataset_path(base_path: pathlib.Path = None, verbose: bool = True) -> p
 
     try:
         os.makedirs(base_path, exist_ok=True)
-        if verbose:
+        if debug:
             print(f"Successfully created dataset directory: {base_path}")
 
     except Exception as e:
@@ -242,7 +242,7 @@ def load_from_local_cache(config: Settings, dataset_name: DatasetNames) -> Tuple
             - List of feature column names
     """
     # Get or create the dataset directory
-    base_dataset_dir = find_dataset_path(config.dataset.path_all_datasets, verbose=False)
+    base_dataset_dir = find_dataset_path(config.dataset.path_all_datasets, debug=False)
 
     # Look for dataset in possible locations - only using the specified formats
     dataset_name_str = dataset_name.value
@@ -297,7 +297,7 @@ def save_to_local_cache(config: Settings, dataset_name: DatasetNames, data_raw: 
         data_raw: DataFrame with the processed dataset
     """
     # Define the base dataset directory
-    base_dataset_dir = find_dataset_path(config.dataset.path_all_datasets, verbose=False)
+    base_dataset_dir = find_dataset_path(config.dataset.path_all_datasets, debug=False)
 
     # Create a standardized path for the dataset - always using the specified format
     dataset_name_str = dataset_name.value
@@ -315,7 +315,7 @@ def save_to_local_cache(config: Settings, dataset_name: DatasetNames, data_raw: 
 
         # Try an alternative location if the primary one fails, still using the specified format
         try:
-            alt_base_dir = find_dataset_path(pathlib.Path(__file__).parent.parent / 'datasets', verbose=False)
+            alt_base_dir = find_dataset_path(pathlib.Path(__file__).parent.parent / 'datasets', debug=False)
             alt_dir = alt_base_dir / dataset_name_str
             alt_dir.mkdir(parents=True, exist_ok=True)
             alt_file = alt_dir / f"{dataset_name_str}.csv"

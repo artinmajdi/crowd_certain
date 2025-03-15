@@ -144,7 +144,7 @@ install_with_conda() {
                 echo -e "${YELLOW}Removing existing conda environment...${NC}"
                 conda env remove -n crowd-certain
                 echo -e "${YELLOW}Creating new conda environment from environment.yml...${NC}"
-                mamba env update --file environment.yml
+                mamba env update --file crowd_certain/config/environment.yml
             else
                 echo -e "${YELLOW}Installation aborted.${NC}"
                 exit 1
@@ -152,7 +152,7 @@ install_with_conda() {
         fi
     else
         echo -e "${YELLOW}Creating conda environment from environment.yml...${NC}"
-        mamba env update --file environment.yml
+        mamba env update --file crowd_certain/config/environment.yml
     fi
 
     # Activate the conda environment
@@ -206,34 +206,26 @@ echo -e "${GREEN}Crowd-Certain installation process completed!${NC}"
 echo -e "${YELLOW}See the documentation in the docs/ directory for usage examples.${NC}"
 echo -e "${BLUE}===========================================================${NC}"
 
-# Ask if user wants to activate the environment now
-if [ "$choice" == "1" ]; then
-    echo ""
-    echo -e "${YELLOW}Note: Due to how shell scripts work, we cannot directly activate the environment in your current shell.${NC}"
-    echo -e "${YELLOW}Instead, we'll create a small activation script for you.${NC}"
-
-    # Create activation script
-    echo '#!/bin/bash' > activate_env.sh
-    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-        echo 'source .venv/Scripts/activate' >> activate_env.sh
+# Create activation script
+if [ "$INSTALL_TYPE" == "venv" ]; then
+    echo '#!/bin/bash' > crowd_certain/config/activate_env.sh
+    if [ "$OS" == "Windows" ]; then
+        echo 'source .venv/Scripts/activate' >> crowd_certain/config/activate_env.sh
     else
-        echo 'source .venv/bin/activate' >> activate_env.sh
+        echo 'source .venv/bin/activate' >> crowd_certain/config/activate_env.sh
     fi
-    chmod +x activate_env.sh
+    chmod +x crowd_certain/config/activate_env.sh
 
-    echo -e "${GREEN}To activate the virtual environment, run:${NC}"
-    echo -e "${BLUE}source ./activate_env.sh${NC}"
-
-elif [ "$choice" == "3" ]; then
-    echo ""
-    echo -e "${YELLOW}Note: Due to how shell scripts work, we cannot directly activate the conda environment in your current shell.${NC}"
-    echo -e "${YELLOW}Instead, we'll create a small activation script for you.${NC}"
-
+    echo -e "${GREEN}Installation complete!${NC}"
+    echo -e "${BLUE}To activate the environment, run:${NC}"
+    echo -e "${BLUE}source ./crowd_certain/config/activate_env.sh${NC}"
+else
     # Create activation script for conda
-    echo '#!/bin/bash' > activate_env.sh
-    echo 'conda activate crowd-certain' >> activate_env.sh
-    chmod +x activate_env.sh
+    echo '#!/bin/bash' > crowd_certain/config/activate_env.sh
+    echo 'conda activate crowd-certain' >> crowd_certain/config/activate_env.sh
+    chmod +x crowd_certain/config/activate_env.sh
 
-    echo -e "${GREEN}To activate the conda environment, run:${NC}"
-    echo -e "${BLUE}source ./activate_env.sh${NC}"
+    echo -e "${GREEN}Installation complete!${NC}"
+    echo -e "${BLUE}To activate the environment, run:${NC}"
+    echo -e "${BLUE}source ./crowd_certain/config/activate_env.sh${NC}"
 fi

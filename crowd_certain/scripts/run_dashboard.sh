@@ -19,7 +19,7 @@ PROJECT_ROOT="$( cd "$CROWD_CERTAIN_ROOT/.." &> /dev/null && pwd )"
 if ! command -v streamlit &> /dev/null; then
     echo -e "${YELLOW}Streamlit is not installed. Installing dependencies...${NC}"
     # Use the main project's requirements.txt file
-    pip install -r "$PROJECT_ROOT/requirements.txt"
+    pip install -r "$PROJECT_ROOT/crowd_certain/config/requirements.txt"
     echo ""
 fi
 

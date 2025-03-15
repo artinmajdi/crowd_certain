@@ -1,8 +1,9 @@
 import argparse
 import json
 import pathlib
+import shutil
 import sys
-from typing import Any, TypeAlias, Union
+from typing import Any, TypeAlias, Union, Tuple
 import numpy as np
 from typing_extensions import Annotated
 from pydantic import BaseModel, confloat, conint, Field
@@ -39,7 +40,6 @@ class DatasetSettings(BaseModel):
 	@field_validator('path_all_datasets', mode='after')
 	def make_path_absolute(cls, v: pathlib.Path):
 		path = (pathlib.Path(__file__).parents[1] / v).resolve()
-		print(f"------- path_all_datasets{path}")
 		return path
 
 
@@ -155,6 +155,130 @@ class Settings(BaseModel):
 			json.dump(config_dict, f, indent=4)
 
 
+def find_config_file(config_path: Union[str, pathlib.Path] = None,
+                     debug: bool = False) -> pathlib.Path:
+	"""
+	Find the config.json file in the project.
+
+	Args:
+		config_path: Specific config path to check first (optional)
+		debug: Whether to print debug information
+
+	Returns:
+		Path to the config.json file (or config_default.json if find_default_config is True)
+		Note: The returned path may not exist if no config file was found
+
+	Raises:
+		FileNotFoundError: If no config file is found and raise_error is True
+	"""
+	# For regular config.json, continue with the normal search process
+
+	# If a specific config path is provided, check it first
+	if config_path is not None:
+
+		# If the provided path is a directory, append the config filename
+		config_path = pathlib.Path(config_path)
+		if config_path.is_dir():
+			config_path = config_path / 'config.json'
+
+		# If it's a file but not named correctly, replace the name
+		elif config_path.name != 'config.json':
+			config_path = config_path.with_name('config.json')
+
+		if config_path.exists():
+			if debug:
+				print(f"Using specified config file at: {config_path}")
+			return config_path
+
+		elif debug:
+			print(f"Specified config file not found at: {config_path}")
+
+	# Check multiple possible locations for the config file
+	possible_locations = [
+		# Current directory
+		pathlib.Path.cwd() / 'config.json',
+
+		# Main project directory (crowd_certain)
+		pathlib.Path(__file__).parents[1] / 'config.json',
+
+		# Utilities directory
+		pathlib.Path(__file__).parent / 'config.json',
+
+		# One level up from current directory
+		pathlib.Path.cwd().parent / 'config.json',
+
+		# Two levels up from current directory
+		pathlib.Path.cwd().parent.parent / 'config.json'
+	]
+
+	# Check each location and print debug info
+	for location in possible_locations:
+		if location.exists():
+			if debug:
+				print(f"Found config file at: {location}")
+			return location
+		elif debug:
+			print(f"Config file not found at: {location}")
+
+	# If no config file is found, return a default path
+	default_location = pathlib.Path(__file__).parents[1] / 'config.json'
+	if debug:
+		print(f"No config file found. Using default location: {default_location}")
+
+	return default_location
+
+
+def revert_to_default_config(config_path: Union[str, pathlib.Path] = None,
+                             debug: bool = False) -> Tuple[bool, pathlib.Path]:
+	"""
+	Find the default config file and copy it to the config location.
+
+	Args:
+		config_path: Path where the config should be copied to (optional)
+		debug: Whether to print debug information
+
+	Returns:
+		Tuple of (success, path):
+			- success: Boolean indicating whether the operation was successful
+			- path: Path where the config was copied to or should have been copied to
+	"""
+	# Get the default config file from the fixed location
+	default_config_path = pathlib.Path(__file__).parents[1] / "config" / "config_default.json"
+
+	if debug:
+		print(f"Using default config from fixed location: {default_config_path}")
+
+	# Determine the target path for the config file
+	if config_path is None:
+		# Use the main project directory for the config file
+		config_path = pathlib.Path(__file__).parents[1] / 'config.json'
+
+	else:
+		config_path = pathlib.Path(config_path)
+		if config_path.is_dir():
+			config_path = config_path / 'config.json'
+
+	# Ensure the directory exists
+	config_path.parent.mkdir(parents=True, exist_ok=True)
+
+	# Check if the default config exists
+	if not default_config_path.exists():
+		if debug:
+			print(f"Default config file not found at: {default_config_path}")
+		return False, config_path
+
+	# Copy the default config to the target location
+	try:
+		shutil.copy2(default_config_path, config_path)
+		if debug:
+			print(f"Successfully copied default config from {default_config_path} to {config_path}")
+		return True, config_path
+	except Exception as e:
+		if debug:
+			print(f"Error copying default config: {str(e)}")
+		return False, config_path
+
+
 def get_settings(argv=None, jupyter=True, debug=False) -> Settings:
 	"""
 	Get application settings from command line arguments and/or config file.
@@ -204,45 +328,6 @@ def get_settings(argv=None, jupyter=True, debug=False) -> Settings:
 
 		return result
 
-	def find_config_file() -> pathlib.Path:
-		"""
-		Find the config.json file in the project.
-
-		Returns:
-			Path to the config.json file
-
-		Raises:
-			FileNotFoundError: If no config file is found
-		"""
-		# Check multiple possible locations for the config file
-		possible_locations = [
-			# Current directory
-			pathlib.Path.cwd() / 'config.json',
-			# Main project directory (crowd_certain)
-			pathlib.Path(__file__).parents[1] / 'config.json',
-			# Utilities directory
-			pathlib.Path(__file__).parent / 'config.json',
-			# One level up from current directory
-			pathlib.Path.cwd().parent / 'config.json',
-			# Two levels up from current directory
-			pathlib.Path.cwd().parent.parent / 'config.json',
-		]
-
-		# Check each location and print debug info
-		for location in possible_locations:
-			if location.exists():
-				if debug:
-					print(f"Found config file at: {location}")
-				return location
-			elif debug:
-				print(f"Config file not found at: {location}")
-
-		# If no config file is found, use the default location
-		default_location = pathlib.Path(__file__).parents[1] / 'config.json'
-		if debug:
-			print(f"No config file found. Using default location: {default_location}")
-		return default_location
-
 	def get_config(args_dict: dict[str, Any]) -> Settings:
 		"""
 		Load and update configuration from file and command line arguments.
@@ -259,12 +344,18 @@ def get_settings(argv=None, jupyter=True, debug=False) -> Settings:
 		"""
 		# Load the config.json file
 		if args_dict.get('config') is not None:
-			config_path = pathlib.Path(args_dict.get('config'))
+			config_path = args_dict.get('config')
 		else:
-			config_path = find_config_file()
+			config_path = None
 
+		# Find the config file
+		config_path = find_config_file(config_path=config_path, debug=debug)
+
+		# If the config file doesn't exist, try to revert to the default config
 		if not config_path.exists():
-			raise FileNotFoundError(f'Config file not found at {config_path}')
+			success, config_path = revert_to_default_config(config_path=config_path, debug=debug)
+			if not success or not config_path.exists():
+				raise FileNotFoundError(f'Config file not found at {config_path} and could not revert to default config')
 
 		if debug:
 			print(f"Loading configuration from: {config_path}")

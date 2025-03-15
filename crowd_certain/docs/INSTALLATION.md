@@ -54,43 +54,54 @@ scripts\install.bat
 
 This batch file provides the same options as the Unix script.
 
-### Method 2: Manual Installation with pip
+### Method 2: Manual Installation
 
-```bash
-# Clone the repository
-git clone https://github.com/artinmajdi/taxonomy.git
-cd taxonomy
+#### Option 1: Using pip (recommended for most users)
 
-# Option 1: Install directly
-pip install -e .
+1. Create a virtual environment (optional but recommended):
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   ```
 
-# Option 2: Create and use a virtual environment
-python -m venv .venv
-# On Windows:
-.venv\Scripts\activate.bat
-# On Unix/Linux/macOS:
-source .venv/bin/activate
-pip install -e .
-```
+2. Install the package in development mode:
+   ```bash
+   pip install -e .
+   ```
 
-This will automatically install all required dependencies listed in `requirements.txt`.
+   This will automatically install all required dependencies listed in `crowd_certain/config/requirements.txt`.
 
-### Method 3: Manual Installation with conda/mamba
+#### Option 2: Using conda/mamba (recommended for complex dependencies)
 
-If you prefer to use conda, you can install the package with:
+1. Create and activate a conda environment using the provided environment file:
+   ```bash
+   conda env create -f crowd_certain/config/environment.yml
+   conda activate crowd-certain
+   ```
 
-```bash
-# Clone the repository
-git clone https://github.com/artinmajdi/taxonomy.git
-cd taxonomy
+2. Install the package in development mode:
+   ```bash
+   pip install -e .
+   ```
 
-# Create and activate the conda environment
-conda env create -f requirements.yml
-conda activate crowd-certain
+## Activating the Environment
 
-# Install the package in development mode
-pip install -e .
-```
+After installation, you can activate the environment using:
+
+- For pip with virtual environment:
+  ```bash
+  source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+  ```
+
+- For conda:
+  ```bash
+  conda activate crowd-certain
+  ```
+
+- Using the provided activation script:
+  ```bash
+  source ./crowd_certain/config/activate_env.sh  # On Windows: crowd_certain\config\activate.bat
+  ```
 
 ## Dependencies
 
