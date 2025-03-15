@@ -20,7 +20,7 @@ from typing import Dict, List, Any, Optional, Tuple, Union
 from crowd_certain.utilities.utils import AIM1_3
 from crowd_certain.utilities.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques, ReadMode
 from crowd_certain.utilities.settings import Settings, OutputModes
-
+from crowd_certain.utilities.utils import ResultComparisonsType
 
 class DashboardStyles:
     """Manages CSS styles for the dashboard."""
@@ -71,11 +71,11 @@ class SidebarConfig:
         self.selected_dataset_value = "ionosphere"
         self.n_workers_min = 3
         self.n_workers_max = 8
-        self.low_quality = 0.4
-        self.high_quality = 1.0
+        self.low_quality   = 0.4
+        self.high_quality  = 1.0
+        self.num_seeds     = 3
         self.selected_uncertainty_values = [UncertaintyTechniques.STD.value]
         self.selected_consistency_values = [ConsistencyTechniques.ONE_MINUS_UNCERTAINTY.value]
-        self.num_seeds = 3
         self.auto_download = True
         self.read_mode = ReadMode.AUTO.value
 
@@ -91,35 +91,33 @@ class SidebarConfig:
         """
         # Start with the current file's directory
         current_dir = Path(__file__).parent.parent
-
-        # Create path to datasets directory
         datasets_dir = current_dir / "datasets"
 
-        # If running from the installed package, the path might be different
-        if not datasets_dir.exists():
-            # Try alternative paths
-            alt_path = Path.cwd() / "datasets"
-            if alt_path.exists():
-                return alt_path
+        # Check potential dataset locations
+        potential_paths = [
+            datasets_dir,
+            Path.cwd() / "datasets",
+            Path.cwd() / "crowd_certain" / "datasets"
+        ]
 
-            # Another common location
-            alt_path = Path.cwd() / "crowd_certain" / "datasets"
-            if alt_path.exists():
-                return alt_path
+        # Return the first existing path
+        for path in potential_paths:
+            if path.exists():
+                # Log if datasets are found
+                dataset_dirs = list(path.glob("*/"))
+                valid_dataset_names = {name.value for name in DatasetNames}
+                valid_dirs = [d for d in dataset_dirs if d.name in valid_dataset_names]
 
-            # Create the directory if it doesn't exist
-            print(f"Creating datasets directory at: {datasets_dir}")
-            datasets_dir.mkdir(parents=True, exist_ok=True)
+                if valid_dirs:
+                    print(f"Found {len(valid_dirs)} dataset directories in {path}")
+                else:
+                    print(f"No valid dataset directories found in {path}. Will create them as needed.")
 
-        # Verify the structure by checking for at least one dataset directory
-        if datasets_dir.exists():
-            # Check if any dataset directories exist
-            dataset_dirs = [d for d in datasets_dir.iterdir() if d.is_dir() and d.name in [name.value for name in DatasetNames]]
-            if dataset_dirs:
-                print(f"Found {len(dataset_dirs)} dataset directories in {datasets_dir}")
-            else:
-                print(f"No dataset directories found in {datasets_dir}. Will create them as needed.")
+                return path
 
+        # No existing path found, create and return the default location
+        print(f"Creating datasets directory at: {datasets_dir}")
+        datasets_dir.mkdir(parents=True, exist_ok=True)
         return datasets_dir
 
     def render(self) -> None:
@@ -256,24 +254,24 @@ class SidebarConfig:
         """Create a Settings object from the current configuration."""
         return Settings(
             dataset=dict(
-                dataset_name=self.get_selected_dataset(),
-                datasetNames=[self.get_selected_dataset()],
-                read_mode=ReadMode(self.read_mode),
-                path_all_datasets=self.dataset_path
+                dataset_name      = self.get_selected_dataset(),
+                datasetNames      = [self.get_selected_dataset()],
+                read_mode         = ReadMode(self.read_mode),
+                path_all_datasets = self.dataset_path
             ),
             simulation=dict(
-                n_workers_min_max=[self.n_workers_min, self.n_workers_max],
-                low_dis=self.low_quality,
-                high_dis=self.high_quality,
-                num_seeds=self.num_seeds,
+                n_workers_min_max = [self.n_workers_min, self.n_workers_max],
+                low_dis           = self.low_quality,
+                high_dis          = self.high_quality,
+                num_seeds         = self.num_seeds,
             ),
             technique=dict(
-                uncertainty_techniques=self.get_selected_uncertainty(),
-                consistency_techniques=self.get_selected_consistency(),
+                uncertainty_techniques = self.get_selected_uncertainty(),
+                consistency_techniques = self.get_selected_consistency(),
             ),
             output=dict(
-                mode=OutputModes.CALCULATE,
-                save=False,
+                mode = OutputModes.CALCULATE,
+                save = False,
             )
         )
 
@@ -300,16 +298,19 @@ class SimulationRunner:
             st.info(f"Dataset base directory: {settings.dataset.path_all_datasets}")
 
             if not dataset_file.exists():
+
                 if self.config.auto_download:
                     st.info(f"Dataset {self.config.selected_dataset_value} not found locally. Will attempt to download...")
+
                 else:
                     st.warning(f"Dataset {self.config.selected_dataset_value} not found locally and auto-download is disabled. The simulation may fail.")
 
             # Run the simulation
             try:
-                results = AIM1_3.calculate_one_dataset(config=settings)
+                results: ResultComparisonsType = AIM1_3.calculate_one_dataset(config=settings)
                 st.session_state.results = results
                 st.success(f"Simulation completed successfully for {self.config.selected_dataset_value} dataset!")
+
             except Exception as e:
                 st.error(f"Error running simulation: {str(e)}")
                 st.exception(e)
@@ -336,7 +337,7 @@ class ResultsTab:
         if 'results' not in st.session_state:
             return
 
-        results = st.session_state.results
+        results: ResultComparisonsType = st.session_state.results
 
         # Display metrics
         st.markdown('<div class="sub-header">Performance Metrics</div>', unsafe_allow_html=True)

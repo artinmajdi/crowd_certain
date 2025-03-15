@@ -1,6 +1,6 @@
 from __future__ import annotations
 import enum
-from typing import Type, TypeVar, Callable, List, Iterator
+from typing import Type, TypeVar, Callable, List, Iterator, Tuple
 
 T = TypeVar('T', bound='EnumWithHelpers')
 class EnumWithHelpers(enum.Enum):
@@ -20,7 +20,9 @@ class EnumWithHelpers(enum.Enum):
         return iter(self.__members__.keys())
 
     def __str__(self) -> str:
-        return self.value
+        if isinstance(self.value, tuple) and len(self.value) > 0:
+            return self.value[0]
+        return str(self.value)
 
 # def members(cls):  # Untyped
 
@@ -50,19 +52,39 @@ class ReadMode(EnumWithHelpers):
 
 # @members
 class DatasetNames(EnumWithHelpers):
-	CHESS      = "chess"           # ID: 22 - Chess (King-Rook vs. King-Pawn)
-	MUSHROOM   = "mushroom"        # ID: 73
-	IRIS       = "iris"            # ID: 53
-	SPAMBASE   = "spambase"        # ID: 94
-	TIC_TAC_TOE = "tic-tac-toe"    # ID: 101
-	HEART      = "heart"           # ID: 45 - Heart Disease (replacement for SICK)
-	WAVEFORM   = "waveform"        # ID: 107
-	CAR        = "car"             # ID: 19
-	VOTE       = "vote"            # ID: 105 - Congressional Voting Records
-	IONOSPHERE = "ionosphere"      # ID: 52
-	BREAST_CANCER = "breast-cancer" # ID: 17 - Breast Cancer Wisconsin (Diagnostic)
-	BANKNOTE   = "banknote"        # ID: 267 - Banknote Authentication
-	SONAR      = "sonar"           # ID: 151 - Sonar, Mines vs. Rocks
+	CHESS         = "chess"           # Chess (King-Rook vs. King-Pawn)
+	MUSHROOM      = "mushroom"        # Mushroom
+	IRIS          = "iris"            # Iris
+	SPAMBASE      = "spambase"        # Spambase
+	TIC_TAC_TOE   = "tic-tac-toe"     # Tic-Tac-Toe Endgame
+	HEART         = "heart"           # Heart Disease (replacement for SICK)
+	WAVEFORM      = "waveform"        # Waveform Database Generator (Version 1)
+	CAR           = "car"             # Car Evaluation
+	VOTE          = "vote"            # Congressional Voting Records
+	IONOSPHERE    = "ionosphere"      # Ionosphere
+	BREAST_CANCER = "breast-cancer"   # Breast Cancer Wisconsin (Diagnostic)
+	BANKNOTE      = "banknote"        # Banknote Authentication
+	SONAR         = "sonar"           # Sonar, Mines vs. Rocks
+
+	@property
+	def uci_id(self) -> int:
+		"""Get the UCI dataset ID."""
+		uci_ids = {
+			"chess"        : 22,
+			"mushroom"     : 73,
+			"iris"         : 53,
+			"spambase"     : 94,
+			"tic-tac-toe"  : 101,
+			"heart"        : 45,
+			"waveform"     : 107,
+			"car"          : 19,
+			"vote"         : 105,
+			"ionosphere"   : 52,
+			"breast-cancer": 17,
+			"banknote"     : 267,
+			"sonar"        : 151
+		}
+		return uci_ids[self.value]
 
 # @members
 class DataModes(EnumWithHelpers):

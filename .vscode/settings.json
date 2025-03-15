@@ -3,9 +3,9 @@
         "**/.git": true,
         "**/.svn": true,
         "**/.hg": true,
-        "**/CVS": true,
         "**/.DS_Store": true,
         "**/Thumbs.db": true,
+        "**/CVS": true,
         "crowd_certain/utilities/__pycache__": true,
         "requirements.yml": true,
         "requirements.txt": true,
@@ -28,5 +28,10 @@
     "explorer.excludeGitIgnore": true,
     "editor.fontSize": 16,
     "pythonPreview.codeFooterDocs.fontSize": 16,
-    "pythonPreview.printOutputDocs.fontSize": 14
+    "pythonPreview.printOutputDocs.fontSize": 14,
+    "python.testing.pytestArgs": [
+        "crowd_certain"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
 }

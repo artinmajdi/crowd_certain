@@ -7,12 +7,14 @@ from sklearn import preprocessing
 from crowd_certain.utilities.params import ReadMode, DatasetNames
 from ucimlrepo import fetch_ucirepo, list_available_datasets
 
+from crowd_certain.utilities.settings import Settings
+
 class Dict2Class(object):
     def __init__(self, my_dict):
         for key in my_dict:
             setattr(self, key, my_dict[key])
 
-def aim1_3_read_download_UCI_database(config, dataset_name=''):
+def load_dataset(config: Settings, dataset_name: DatasetNames = None) -> Tuple[pd.DataFrame, List[str]]:
     """
     Load a dataset from the UCI Machine Learning Repository using the ucimlrepo library.
     First checks if the dataset is available locally, and only downloads it if not found.
@@ -28,27 +30,8 @@ def aim1_3_read_download_UCI_database(config, dataset_name=''):
     """
     dataset_name = dataset_name or config.dataset.dataset_name
 
-    # Mapping from our DatasetNames enum to ucimlrepo dataset IDs
-    dataset_id_map = {
-        DatasetNames.CHESS: 22,       # Chess (King-Rook vs. King-Pawn)
-        DatasetNames.MUSHROOM: 73,    # Mushroom
-        DatasetNames.IRIS: 53,        # Iris
-        DatasetNames.SPAMBASE: 94,    # Spambase
-        DatasetNames.TIC_TAC_TOE: 101, # Tic-Tac-Toe Endgame
-        DatasetNames.HEART: 45,       # Heart Disease (replacement for SICK)
-        DatasetNames.WAVEFORM: 107,   # Waveform Database Generator (Version 1)
-        DatasetNames.CAR: 19,         # Car Evaluation
-        DatasetNames.VOTE: 105,       # Congressional Voting Records
-        DatasetNames.IONOSPHERE: 52,  # Ionosphere
-        DatasetNames.BREAST_CANCER: 17, # Breast Cancer Wisconsin (Diagnostic)
-        DatasetNames.BANKNOTE: 267,   # Banknote Authentication
-        DatasetNames.SONAR: 151,      # Sonar, Mines vs. Rocks
-    }
-
-    # Get the dataset ID
-    dataset_id = dataset_id_map.get(dataset_name)
-    if dataset_id is None:
-        raise ValueError(f"Dataset {dataset_name} not found in the mapping. Available datasets: {list(dataset_id_map.keys())}")
+    # Get the UCI dataset ID directly from the DatasetNames enum
+    dataset_id = dataset_name.uci_id
 
     print(f"Loading dataset: {dataset_name.value} (ID: {dataset_id}) from UCI ML Repository")
 
@@ -79,7 +62,7 @@ def aim1_3_read_download_UCI_database(config, dataset_name=''):
             raise ValueError(f"Dataset {dataset_name.value} has multiple target columns. Not supported.")
 
         # Process the dataset based on its type
-        data_raw, feature_columns = process_dataset(data_raw, dataset_name)
+        data_raw, feature_columns = process_dataset(data_raw=data_raw, dataset_name=dataset_name)
 
         # Save the processed dataset to local cache for future use
         save_to_local_cache(config, dataset_name, data_raw)
@@ -94,7 +77,7 @@ def aim1_3_read_download_UCI_database(config, dataset_name=''):
         print(f"Error downloading dataset from ucimlrepo: {str(e)}")
         raise ValueError(f"Could not load dataset {dataset_name.value} from ucimlrepo or local cache")
 
-def process_dataset(data_raw, dataset_name):
+def process_dataset(data_raw: pd.DataFrame, dataset_name: DatasetNames) -> Tuple[pd.DataFrame, List[str]]:
     """
     Process the dataset based on its type.
 
@@ -111,34 +94,30 @@ def process_dataset(data_raw, dataset_name):
     feature_columns = [col for col in data_raw.columns if col != 'true']
 
     # Convert categorical variables to numeric if needed
+    # Process categorical columns
     for col in data_raw.columns:
         if data_raw[col].dtype == 'object':
-            # For the target column, use specific mappings
+            # Define target column mappings for known datasets
+            target_mappings = {
+                DatasetNames.CHESS        : {'won': 1, 'nowin': 0},
+                DatasetNames.MUSHROOM     : {'e': 1, 'p': 0},
+                DatasetNames.HEART        : {1: 1, 0: 0},
+                DatasetNames.TIC_TAC_TOE  : {'positive': 1, 'negative': 0},
+                DatasetNames.VOTE         : {'democrat': 1, 'republican': 0},
+                DatasetNames.IONOSPHERE   : {'g': 1, 'b': 0},
+                DatasetNames.BREAST_CANCER: {'M': 1, 'B': 0},
+                DatasetNames.SONAR        : {'M': 1, 'R': 0}
+            }
+
             if col == 'true':
-                if dataset_name == DatasetNames.CHESS:
-                    data_raw[col] = data_raw[col].map({'won': 1, 'nowin': 0})
-                elif dataset_name == DatasetNames.MUSHROOM:
-                    data_raw[col] = data_raw[col].map({'e': 1, 'p': 0})
-                elif dataset_name == DatasetNames.HEART:
-                    data_raw[col] = data_raw[col].map({1: 1, 0: 0})
-                elif dataset_name == DatasetNames.TIC_TAC_TOE:
-                    data_raw[col] = data_raw[col].map({'positive': 1, 'negative': 0})
-                elif dataset_name == DatasetNames.VOTE:
-                    data_raw[col] = data_raw[col].map({'democrat': 1, 'republican': 0})
-                elif dataset_name == DatasetNames.IONOSPHERE:
-                    data_raw[col] = data_raw[col].map({'g': 1, 'b': 0})
-                elif dataset_name == DatasetNames.BREAST_CANCER:
-                    data_raw[col] = data_raw[col].map({'M': 1, 'B': 0})
-                elif dataset_name == DatasetNames.SONAR:
-                    data_raw[col] = data_raw[col].map({'M': 1, 'R': 0})
+                # Apply predefined mapping if available, otherwise use label encoding
+                if dataset_name in target_mappings:
+                    data_raw[col] = data_raw[col].map(target_mappings[dataset_name])
                 else:
-                    # For other datasets, use label encoding
-                    le = preprocessing.LabelEncoder()
-                    data_raw[col] = le.fit_transform(data_raw[col])
+                    data_raw[col] = preprocessing.LabelEncoder().fit_transform(data_raw[col])
             else:
-                # For feature columns, use label encoding
-                le = preprocessing.LabelEncoder()
-                data_raw[col] = le.fit_transform(data_raw[col])
+                # Use label encoding for feature columns
+                data_raw[col] = preprocessing.LabelEncoder().fit_transform(data_raw[col])
 
     # Dataset-specific processing
     if dataset_name == DatasetNames.IRIS:
@@ -170,7 +149,7 @@ def process_dataset(data_raw, dataset_name):
 
     return data_raw, feature_columns
 
-def separate_train_test(data_raw, train_frac=0.8, random_state=42):
+def separate_train_test(data_raw: pd.DataFrame, train_frac: float = 0.8, random_state: int = 42) -> Dict[str, pd.DataFrame]:
     """
     Split the dataset into training and testing sets.
 
@@ -186,7 +165,7 @@ def separate_train_test(data_raw, train_frac=0.8, random_state=42):
     test = data_raw.drop(train.index)
     return {'train': train, 'test': test}
 
-def load_from_local_cache(config, dataset_name):
+def load_from_local_cache(config: Settings, dataset_name: DatasetNames) -> Tuple[pd.DataFrame, List[str]]:
     """
     Load a dataset from the local cache.
 
@@ -228,7 +207,8 @@ def load_from_local_cache(config, dataset_name):
     # Print all paths being checked (for debugging)
     print(f"Checking the following paths for dataset {dataset_name_str}:")
     for path in possible_paths:
-        print(f"  - {path} (exists: {path.exists()})")
+        if path.exists():
+            print(f"  - {path} (exists: {path.exists()})")
 
     # Find the first existing dataset file
     dataset_file = next((path for path in possible_paths if path.exists()), None)
@@ -253,15 +233,14 @@ def load_from_local_cache(config, dataset_name):
         raise ValueError(f"Error reading dataset file {dataset_file}: {str(e)}")
 
     # Process the dataset
-    data_raw, feature_columns = process_dataset(data_raw, dataset_name)
+    data_raw, feature_columns = process_dataset(data_raw=data_raw, dataset_name=dataset_name)
 
     # Split into train and test sets
-    data = separate_train_test(data_raw, train_frac=config.dataset.train_test_ratio,
-                              random_state=config.dataset.random_state)
+    data = separate_train_test(data_raw=data_raw, train_frac=config.dataset.train_test_ratio, random_state=config.dataset.random_state)
 
     return data, feature_columns
 
-def save_to_local_cache(config, dataset_name, data_raw):
+def save_to_local_cache(config: Settings, dataset_name: DatasetNames, data_raw: pd.DataFrame) -> None:
     """
     Save a dataset to the local cache for future use.
 

@@ -46,7 +46,7 @@
   "output": {
     "mode": "calculate",
     "save": true,
-    "path": "outputs"
+    "path": "./outputs"
   },
   "dashboard": {
     "port": 8501,

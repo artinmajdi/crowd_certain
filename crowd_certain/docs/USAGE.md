@@ -28,7 +28,7 @@ config = Settings()
 config.dataset.dataset_name = DatasetNames.IONOSPHERE
 
 # Load data
-data, feature_columns = load_data.aim1_3_read_download_UCI_database(config=config)
+data, feature_columns = load_data.load_dataset(config=config)
 ```
 
 ### Creating an Instance

@@ -3,7 +3,7 @@ import multiprocessing
 import pickle
 from collections import defaultdict, OrderedDict
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -1585,12 +1585,12 @@ class AIM1_3:
 
 
 	@staticmethod
-	def wrapper(args: dict[str, Any], config, data, feature_columns) -> Tuple[dict[str, Any], Result2Type]:
+	def wrapper(args: Dict, config: Settings, data, feature_columns) -> Tuple[Dict, Result2Type]:
 		return args, AIM1_3.core_measurements(data=data, n_workers=args['nl'], config=config, feature_columns=feature_columns, seed=args['seed'], use_parallelization_benchmarks=False)
 
 
 	@staticmethod
-	def objective_function(config, data, feature_columns):
+	def objective_function(config: Settings, data, feature_columns) -> Callable[[Dict], Tuple[Dict, Result2Type]]:
 		return functools.partial(AIM1_3.wrapper, config=config, data=data, feature_columns=feature_columns)
 
 
@@ -1617,8 +1617,6 @@ class AIM1_3:
 			Dict[str, List[ResultType]]:
 				A dictionary mapping output keys to lists containing the results for each seed.
 		"""
-
-
 
 		path = self.config.output.path / 'outputs' / f'{self.config.dataset.dataset_name}.pkl'
 
@@ -1673,7 +1671,7 @@ class AIM1_3:
 	def worker_weight_strength_relation(self, seed=0, n_workers=10) -> pd.DataFrame:
 
 		metric_name = 'weight_strength_relation'
-		path_main = self.config.output.path / metric_name / self.config.dataset.dataset_name.value
+		path_main = self.config.output.path / metric_name / str(self.config.dataset.dataset_name)
 		lsf = LoadSaveFile(path_main / f'{metric_name}.xlsx')
 
 		if self.config.output.mode is OutputModes.CALCULATE:
@@ -1751,7 +1749,7 @@ class AIM1_3:
 	"""
 
 	@classmethod
-	def calculate_one_dataset(cls, config: 'Settings', dataset_name: params.DatasetNames=params.DatasetNames.IONOSPHERE) -> ResultComparisonsType:
+	def calculate_one_dataset(cls, config: Settings, dataset_name: params.DatasetNames=None) -> ResultComparisonsType:
 		"""
 		Calculates various output metrics and analyses for a given dataset using the provided configuration.
 
@@ -1776,10 +1774,11 @@ class AIM1_3:
 			creates an instance for further analysis, and computes the required metrics.
 		"""
 
-		config.dataset.dataset_name = dataset_name
+		if dataset_name is not None:
+			config.dataset.dataset_name = dataset_name
 
 		# loading the dataset
-		data, feature_columns = dataset_loader.aim1_3_read_download_UCI_database(config=config)
+		data, feature_columns = dataset_loader.load_dataset(config=config)
 
 		aim1_3 = cls(data=data, feature_columns=feature_columns, config=config)
 
