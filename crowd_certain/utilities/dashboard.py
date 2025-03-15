@@ -125,19 +125,20 @@ class SidebarConfig:
         # Get the correct dataset path using the shared function
         self.dataset_path = find_dataset_path(getattr(self.config.dataset, 'path_all_datasets', Path(__file__).parent.parent / 'datasets'))
 
-    def save_config(self, file_path=None):
+    def save_config(self, config_path=None):
         """Save the current configuration to a file."""
         # Save the config with current UI values
         config = self.update_config()
 
         # Determine the file path
-        if file_path is None:
-            file_path = find_config_file()
+        if config_path is None:
+            config_path = find_config_file(config_path=config_path)
 
         # Save the configuration
         try:
-            config.save(file_path)
-            return True, f"Configuration saved to {file_path}"
+            config.save(config_path)
+            return True, f"Configuration saved to {config_path}"
+
         except Exception as e:
             return False, f"Error saving configuration: {str(e)}"
 

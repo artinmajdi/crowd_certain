@@ -1,70 +1,53 @@
 {
-  "dataset": {
-    "data_mode": "train",
-    "random_state": 42,
-    "path_all_datasets": "./datasets",
-    "dataset_name": "ionosphere",
-    "datasetNames": [
-      "ionosphere",
-      "chess",
-      "mushroom",
-      "spambase",
-      "breast-cancer",
-      "banknote",
-      "sonar"
-    ],
-    "non_null_samples": true,
-    "train_test_ratio": 0.8,
-    "shuffle": true,
-    "augmentation_count": 1,
-    "main_url": "https://archive.ics.uci.edu/ml/machine-learning-databases/"
-  },
-  "simulation": {
-    "n_workers_min_max": [3, 8],
-    "high_dis": 1.0,
-    "low_dis": 0.4,
-    "num_simulations": 5,
-    "num_seeds": 3,
-    "use_parallelization": true,
-    "max_parallel_workers": 8,
-    "simulation_methods": "random_states"
-  },
-  "technique": {
-    "uncertainty_techniques": [
-      "standard_deviation",
-      "entropy",
-      "coefficient_of_variation",
-      "predicted_interval",
-      "confidence_interval"
-    ],
-    "consistency_techniques": [
-      "one_minus_uncertainty",
-      "one_divided_by_uncertainty"
-    ]
-  },
-  "output": {
-    "mode": "calculate",
-    "save": true,
-    "path": "./outputs"
-  },
-  "dashboard": {
-    "port": 8501,
-    "theme": "light",
-    "default_dataset": "ionosphere",
-    "auto_download": true,
-    "cache_results": true,
-    "max_cache_size": 100
-  },
-  "logging": {
-    "level": "INFO",
-    "file": "crowd_certain.log",
-    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    "console_output": true
-  },
-  "development": {
-    "debug": false,
-    "profile_performance": false,
-    "test_mode": false,
-    "api_docs_url": "/docs"
-  }
+    "dataset": {
+        "data_mode": "train",
+        "path_all_datasets": "/Users/artinmajdi/Documents/GitHubs/PhD/code/submodules/crowd/crowd_certain/datasets",
+        "dataset_name": "ionosphere",
+        "datasetNames": [
+            "ionosphere",
+            "chess",
+            "mushroom",
+            "spambase",
+            "breast-cancer",
+            "banknote",
+            "sonar"
+        ],
+        "non_null_samples": true,
+        "random_state": 42,
+        "shuffle": true,
+        "main_url": "https://archive.ics.uci.edu/ml/machine-learning-databases/",
+        "train_test_ratio": 0.8,
+        "augmentation_count": 1
+    },
+    "simulation": {
+        "n_workers_min_max": [
+            3,
+            8
+        ],
+        "high_dis": 1.0,
+        "low_dis": 0.4,
+        "num_simulations": 5,
+        "num_seeds": 3,
+        "use_parallelization": true,
+        "max_parallel_workers": 6,
+        "simulation_methods": "random_states"
+    },
+    "technique": {
+        "uncertainty_techniques": [
+            "standard_deviation",
+            "entropy",
+            "coefficient_of_variation",
+            "predicted_interval",
+            "confidence_interval"
+        ],
+        "consistency_techniques": [
+            "one_minus_uncertainty",
+            "one_divided_by_uncertainty"
+        ]
+    },
+    "output": {
+        "path": "/Users/artinmajdi/Documents/GitHubs/PhD/code/submodules/crowd/crowd_certain/outputs",
+        "mode": "calculate",
+        "save": false
+    }
 }
