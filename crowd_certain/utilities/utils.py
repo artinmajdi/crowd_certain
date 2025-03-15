@@ -14,11 +14,8 @@ from matplotlib import pyplot as plt
 from scipy.interpolate import make_interp_spline
 from scipy.special import bdtrc
 from sklearn import ensemble as sk_ensemble, metrics as sk_metrics
-
-from crowd_certain.utilities import load_data
-from crowd_certain.utilities.params import ConfidenceScoreNames, ConsistencyTechniques, DatasetNames, \
-	EvaluationMetricNames, MainBenchmarks, \
-	OtherBenchmarkNames, ProposedTechniqueNames, SimulationMethods, StrategyNames, UncertaintyTechniques
+from crowd_certain.utilities import dataset_loader
+from crowd_certain.utilities import params
 from crowd_certain.utilities.settings import OutputModes, Settings
 
 
@@ -142,21 +139,22 @@ class BenchmarkTechniques:
 
 
 	@classmethod
-	def get_techniques(cls, benchmark_name: OtherBenchmarkNames, test: pd.DataFrame, test_unique: np.ndarray):
+	def get_techniques(cls, benchmark_name: params.OtherBenchmarkNames, test: pd.DataFrame, test_unique: np.ndarray):
 		"""
 		Apply a specific benchmark technique to the test data.
 
-		This method applies the specified benchmark technique to the test data and returns
-		the aggregated predictions. Each technique is wrapped in an exception handler to
-		return zeros in case of failure.
+		Parameters
+		----------
+		benchmark_name (params.OtherBenchmarkNames): The benchmark technique to apply
+		test : pd.DataFrame
+			Test data containing worker labels
+		test_unique : np.ndarray
+			Unique items in the test set
 
-		Parameters:
-			benchmark_name (OtherBenchmarkNames): The benchmark technique to apply
-			test (pd.DataFrame): The test data in the crowdkit format
-			test_unique (np.ndarray): Unique task IDs in the test data
-
-		Returns:
-			np.ndarray: Aggregated predictions from the applied benchmark technique
+		Returns
+		-------
+		function
+			The appropriate function for the specified benchmark technique
 		"""
 		def exception_handler(func):
 			"""
@@ -298,7 +296,7 @@ class BenchmarkTechniques:
 
 
 	@staticmethod
-	def wrapper(benchmark_name: OtherBenchmarkNames, test: pd.DataFrame, test_unique: np.ndarray) -> Tuple[OtherBenchmarkNames, np.ndarray]:
+	def wrapper(benchmark_name: params.OtherBenchmarkNames, test: pd.DataFrame, test_unique: np.ndarray) -> Tuple[params.OtherBenchmarkNames, np.ndarray]:
 		"""
 		Wrapper function to apply a benchmark technique and return its name with results.
 
@@ -306,7 +304,7 @@ class BenchmarkTechniques:
 		with the resulting predictions.
 
 		Parameters:
-			benchmark_name (OtherBenchmarkNames): The benchmark technique to apply
+			benchmark_name (params.OtherBenchmarkNames): The benchmark technique to apply
 			test (pd.DataFrame): The test data in the crowdkit format
 			test_unique (np.ndarray): Unique task IDs in the test data
 
@@ -376,11 +374,11 @@ class BenchmarkTechniques:
 		function = self.objective_function(test=test, test_unique=test_unique)
 
 		if use_parallelization_benchmarks:
-			with multiprocessing.Pool(processes=len(OtherBenchmarkNames)) as pool:
-				output = pool.map(function, list(OtherBenchmarkNames))
+			with multiprocessing.Pool(processes=len(params.OtherBenchmarkNames)) as pool:
+				output = pool.map(function, list(params.OtherBenchmarkNames))
 
 		else:
-			output = [function(benchmark_name=m) for m in OtherBenchmarkNames]
+			output = [function(benchmark_name=m) for m in params.OtherBenchmarkNames]
 
 		return pd.DataFrame({benchmark_name.value: aggregated_labels for benchmark_name, aggregated_labels in output})
 
@@ -520,9 +518,9 @@ class AIM1_3:
 		Notes
 		-----
 		The function evaluates accuracy for three groups of methods:
-		- ProposedTechniqueNames: Custom proposed techniques
-		- MainBenchmarks: Main benchmark methods
-		- OtherBenchmarkNames: Additional benchmark methods
+		- params.ProposedTechniqueNames: Custom proposed techniques
+		- params.MainBenchmarks: Main benchmark methods
+		- params.OtherBenchmarkNames: Additional benchmark methods
 		- MV_Classifier: Majority voting accuracy
 
 		Accuracy is calculated by thresholding aggregated labels at 0.5 and
@@ -530,7 +528,7 @@ class AIM1_3:
 		"""
 
 		accuracy = pd.DataFrame(index=[n_workers])
-		for methods in [ProposedTechniqueNames, MainBenchmarks, OtherBenchmarkNames]:
+		for methods in [params.ProposedTechniqueNames, params.MainBenchmarks, params.OtherBenchmarkNames]:
 			for m in methods:
 				accuracy[m] = ((aggregated_labels[m] >= 0.5) == truth).mean(axis=0)
 
@@ -575,10 +573,10 @@ class AIM1_3:
 
 		for tech in self.config.technique.uncertainty_techniques:
 
-			if tech is UncertaintyTechniques.STD:
+			if tech is params.UncertaintyTechniques.STD:
 				df_uncertainties[tech.value] = df.std( axis=1 )
 
-			elif tech is UncertaintyTechniques.ENTROPY:
+			elif tech is params.UncertaintyTechniques.ENTROPY:
 				# Normalize each row to sum to 1
 				df_normalized = df.div(df.sum(axis=1) + epsilon, axis=0)
 				# Calculate entropy
@@ -588,16 +586,16 @@ class AIM1_3:
 				# normalizing entropy values to be between 0 and 1
 				df_uncertainties[tech.value] = entropy / np.log(df.shape[1])
 
-			elif tech is UncertaintyTechniques.CV:
+			elif tech is params.UncertaintyTechniques.CV:
 				# The coefficient of variation (CoV) is a measure of relative variability. It is defined as the ratio of the standard deviation. CoV doesn't have an upper bound, but it's always non-negative. Normalizing CoV to a range of [0, 1] isn't straightforward because it can theoretically take any non-negative value. A common approach is to use a transformation that asymptotically approaches 1 as CoV increases. However, the choice of transformation can be somewhat arbitrary and may depend on the context of your data. One simple approach is to use a bounded function like the hyperbolic tangent:
 
 				coefficient_of_variation = df.std(axis=1) / (df.mean(axis=1) + epsilon)
 				df_uncertainties[tech.value] = np.tanh(coefficient_of_variation)
 
-			elif tech is UncertaintyTechniques.PI:
+			elif tech is params.UncertaintyTechniques.PI:
 				df_uncertainties[tech.value] = df.apply(lambda row: np.percentile(row.astype(int), 75) - np.percentile(row.astype(int), 25), axis=1)
 
-			elif tech is UncertaintyTechniques.CI:
+			elif tech is params.UncertaintyTechniques.CI:
 				# Lower Bound: This is the first value in the tuple. It indicates the lower end of the range. If you have a 95% confidence interval, this means that you can be 95% confident that the true population mean is greater than or equal to this value.
 
 				# Upper Bound: This is the second value in the tuple. It represents the upper end of the range. Continuing with the 95% confidence interval example, you can be 95% confident that the true population mean is less than or equal to this value.
@@ -670,10 +668,10 @@ class AIM1_3:
 		consistency = initialize_consistency()
 
 		for tech in self.config.technique.consistency_techniques:
-			if tech is ConsistencyTechniques.ONE_MINUS_UNCERTAINTY:
+			if tech is params.ConsistencyTechniques.ONE_MINUS_UNCERTAINTY:
 				consistency[tech.value] = 1 - uncertainty
 
-			elif tech is ConsistencyTechniques.ONE_DIVIDED_BY_UNCERTAINTY:
+			elif tech is params.ConsistencyTechniques.ONE_DIVIDED_BY_UNCERTAINTY:
 				consistency[tech.value] = 1 / (uncertainty + np.finfo(float).eps)
 
 		# Making the worker the highest level in the columns
@@ -708,7 +706,7 @@ class AIM1_3:
 			- Accuracy
 			- F1 score
 
-			The Series is indexed by values from the EvaluationMetricNames enum.
+			The Series is indexed by values from the params.EvaluationMetricNames enum.
 			If truth has no valid values or is not binary, the metrics will be NaN.
 
 		Notes:
@@ -717,7 +715,7 @@ class AIM1_3:
 		- Metrics are only calculated if there are non-null values in truth and truth contains exactly 2 unique values
 		"""
 
-		metrics = pd.Series(index=EvaluationMetricNames.values())
+		metrics = pd.Series(index=params.EvaluationMetricNames.values())
 
 		non_null = ~truth.isnull()
 		truth_notnull = truth[non_null].to_numpy()
@@ -725,9 +723,9 @@ class AIM1_3:
 		if (len(truth_notnull) > 0) and (np.unique(truth_notnull).size == 2):
 
 			yhat = (aggregated_labels > 0.5).astype(int)[non_null]
-			metrics[EvaluationMetricNames.AUC.value] = sk_metrics.roc_auc_score( truth_notnull, yhat)
-			metrics[EvaluationMetricNames.ACC.value] = sk_metrics.accuracy_score(truth_notnull, yhat)
-			metrics[EvaluationMetricNames.F1.value ] = sk_metrics.f1_score( 	 truth_notnull, yhat)
+			metrics[params.EvaluationMetricNames.AUC.value] = sk_metrics.roc_auc_score( truth_notnull, yhat)
+			metrics[params.EvaluationMetricNames.ACC.value] = sk_metrics.accuracy_score(truth_notnull, yhat)
+			metrics[params.EvaluationMetricNames.F1.value ] = sk_metrics.f1_score( 	 truth_notnull, yhat)
 
 		return metrics
 
@@ -930,30 +928,31 @@ class AIM1_3:
 				The function uses the nonlocal variable `predicted_labels_all_sims` to store prediction results.
 				Predictions are organized by mode ('train' or 'test'), label column (LB), and simulation number.
 
-				For SimulationMethods.RANDOM_STATES, it uses a RandomForestClassifier with varying random states.
-				For SimulationMethods.MULTIPLE_CLASSIFIERS, it selects different classifier types from a predefined list.
+				For params.SimulationMethods.RANDOM_STATES, it uses a RandomForestClassifier with varying random states.
+				For params.SimulationMethods.MULTIPLE_CLASSIFIERS, it selects different classifier types from a predefined list.
 				"""
+
 				nonlocal predicted_labels_all_sims
 
 				def get_classifier():
 					"""
 					Returns a classifier based on the simulation method configuration.
 
-					For SimulationMethods.RANDOM_STATES:
+					For params.SimulationMethods.RANDOM_STATES:
 						Returns a RandomForestClassifier with fixed parameters but varying random_state
 						for different simulation numbers.
 
-					For SimulationMethods.MULTIPLE_CLASSIFIERS:
+					For params.SimulationMethods.MULTIPLE_CLASSIFIERS:
 						Returns a classifier from the pre-configured list of classifiers based on
 						the simulation number.
 
 					Returns:
 						sklearn estimator: A classifier instance configured according to the simulation method.
 					"""
-					if self.config.simulation.simulation_methods is SimulationMethods.RANDOM_STATES:
+					if self.config.simulation.simulation_methods is params.SimulationMethods.RANDOM_STATES:
 						return sk_ensemble.RandomForestClassifier(n_estimators=4, max_depth=4, random_state=self.seed * sim_num) # n_estimators=4, max_depth=4
 
-					elif self.config.simulation.simulation_methods is SimulationMethods.MULTIPLE_CLASSIFIERS:
+					elif self.config.simulation.simulation_methods is params.SimulationMethods.MULTIPLE_CLASSIFIERS:
 						return self.config.simulation.classifiers_list[sim_num]
 
 				# training a random forest on the aformentioned labels
@@ -1007,10 +1006,10 @@ class AIM1_3:
 						- If using RANDOM_STATES method, returns the configured number of simulations.
 						- If using MULTIPLE_CLASSIFIERS method, returns the number of classifiers in the list.
 				"""
-				if self.config.simulation.simulation_methods is SimulationMethods.RANDOM_STATES:
+				if self.config.simulation.simulation_methods is params.SimulationMethods.RANDOM_STATES:
 					return self.config.simulation.num_simulations
 
-				elif self.config.simulation.simulation_methods is SimulationMethods.MULTIPLE_CLASSIFIERS:
+				elif self.config.simulation.simulation_methods is params.SimulationMethods.MULTIPLE_CLASSIFIERS:
 					return len(self.config.simulation.classifiers_list)
 
 			def swap_axes(predicted_labels_all_sims) -> dict[str, dict[str, pd.DataFrame]]:
@@ -1131,12 +1130,12 @@ class AIM1_3:
 			preds 		  (pd.DataFrame): pd.DataFrame( index   = data_indices,
 														columns = [worker_0, worker_1, ...])
 			uncertainties (pd.DataFrame): pd.DataFrame( index   = data_indices,
-														columns = pd.MultiIndex.from_product([worker_0, ...], UncertaintyTechniques.values()))
+														columns = pd.MultiIndex.from_product([worker_0, ...], params.UncertaintyTechniques.values()))
 
 		Returns:
-			weights = pd.DataFrame( index = pd.MultiIndex.from_product([ConsistencyTechniques.values(),
-																		UncertaintyTechniques.values(),
-																		ProposedTechniqueNames.values()]),
+			weights = pd.DataFrame( index = pd.MultiIndex.from_product([params.ConsistencyTechniques.values(),
+																		params.UncertaintyTechniques.values(),
+																		params.ProposedTechniqueNames.values()]),
 									columns = ['worker_0', .... ])
 		"""
 
@@ -1146,7 +1145,7 @@ class AIM1_3:
 		T1    = self.calculate_consistency( uncertainties )
 		T2    = T1.copy()
 
-		proposed_techniques = [l.value for l in ProposedTechniqueNames]
+		proposed_techniques = [l.value for l in params.ProposedTechniqueNames]
 		w_hat = pd.DataFrame(index=proposed_techniques, columns=T1.columns, dtype=float)
 		# w_hat2 = pd.Series(index=T1.columns)
 
@@ -1160,7 +1159,7 @@ class AIM1_3:
 			# w_hat.loc[proposed_techniques[0],worker] = T1[worker].mean(axis=0)
 			# w_hat[worker].iloc[proposed_techniques[1]] = T2[worker].mean(axis=0)
 
-		# w_hat = pd.DataFrame([w_hat1, w_hat2], index=list(ProposedTechniqueNames)).T
+		# w_hat = pd.DataFrame([w_hat1, w_hat2], index=list(params.ProposedTechniqueNames)).T
 
 		# measuring average weight over all workers. used to normalize the weights.
 		w_hat_mean_over_workers = w_hat.T.groupby(level=[1,2]).sum().T
@@ -1395,10 +1394,10 @@ class AIM1_3:
 			# F[I < 0.5] = (1 - F)[I < 0.5]
 			return pd.DataFrame({'F': out.apply(get_F_lambda, axis=1), 'F_pos': out['I']})
 
-		columns = pd.MultiIndex.from_product([StrategyNames.values(), ['F', 'F_pos']], names=['strategies', 'F_F_pos'])
+		columns = pd.MultiIndex.from_product([params.StrategyNames.values(), ['F', 'F_pos']], names=['strategies', 'F_F_pos'])
 		confidence_scores = pd.DataFrame(columns=columns, index=delta.index)
-		confidence_scores[StrategyNames.FREQ.value] = get_freq()
-		confidence_scores[StrategyNames.BETA.value] = get_beta()
+		confidence_scores[params.StrategyNames.FREQ.value] = get_freq()
+		confidence_scores[params.StrategyNames.BETA.value] = get_beta()
 
 		return confidence_scores
 
@@ -1460,19 +1459,19 @@ class AIM1_3:
 		def get_results_proposed(preds: pd.DataFrame) -> ResultType:
 			"""
 			Returns:
-				F: pd.DataFrame(columns = pd.MultiIndex.from_product([ConsistencyTechniques, UncertaintyTechniques,ProposedTechniqueNames]),
+				F: pd.DataFrame(columns = pd.MultiIndex.from_product([params.ConsistencyTechniques, UncertaintyTechniques,ProposedTechniqueNames]),
 								index   = pd.MultiIndex.from_product([StrategyNames, data_indices])
 
-				aggregated_labels: pd.DataFrame(columns = pd.MultiIndex.from_product([ConsistencyTechniques, UncertaintyTechniques,ProposedTechniqueNames])
+				aggregated_labels: pd.DataFrame(columns = pd.MultiIndex.from_product([params.ConsistencyTechniques, UncertaintyTechniques,ProposedTechniqueNames])
 												index   = data_indices)
 			"""
 
 			agg_labels = pd.DataFrame(columns=weights.PROPOSED.index, index=preds.index)
 
-			index = pd.MultiIndex.from_product([ ['F', 'F_pos'], StrategyNames.values(), preds.index ], names=['F_F_pos', 'strategies', 'indices'])
+			index = pd.MultiIndex.from_product([ ['F', 'F_pos'], params.StrategyNames.values(), preds.index ], names=['F_F_pos', 'strategies', 'indices'])
 			confidence_scores = {}
 
-			metrics = pd.DataFrame(columns=weights.PROPOSED.index, index=EvaluationMetricNames.values())
+			metrics = pd.DataFrame(columns=weights.PROPOSED.index, index=params.EvaluationMetricNames.values())
 
 			for cln in weights.PROPOSED.index:
 				agg_labels[cln] = (preds * weights.PROPOSED.T[cln]).sum(axis=1)
@@ -1492,8 +1491,8 @@ class AIM1_3:
 
 			Returns:
 				Tuple[pd.DataFrame, pd.DataFrame]:
-				F 							 = pd.DataFrame(columns = pd.MultiIndex.from_product([MainBenchmarks, StrategyNames] , index = workers_labels.index)
-				aggregated_labels_benchmarks = pd.DataFrame(columns = MainBenchmarks 											 , index = workers_labels.index)
+				F 							 = pd.DataFrame(columns = pd.MultiIndex.from_product([params.MainBenchmarks, params.StrategyNames] , index = workers_labels.index)
+				aggregated_labels_benchmarks = pd.DataFrame(columns = params.MainBenchmarks 											 , index = workers_labels.index)
 			"""
 
 			def get_v_F_Tao_sheng() -> Tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
@@ -1503,14 +1502,14 @@ class AIM1_3:
 
 					confidence_scores = {}
 
-					agg_labels = pd.DataFrame(index=workers_labels.index, columns=MainBenchmarks.values())
+					agg_labels = pd.DataFrame(index=workers_labels.index, columns=params.MainBenchmarks.values())
 					return agg_labels, confidence_scores
 
 				agg_labels, confidence_scores = initialize()
 
-				for m in MainBenchmarks:
+				for m in params.MainBenchmarks:
 
-					w = weights.TAO if m is MainBenchmarks.TAO else weights.SHENG
+					w = weights.TAO if m is params.MainBenchmarks.TAO else weights.SHENG
 
 					agg_labels[m.value] = (workers_labels * w).sum(axis=1)
 
@@ -1552,7 +1551,7 @@ class AIM1_3:
 		# def merge_worker_strengths_and_weights() -> pd.DataFrame:
 		# 	nonlocal workers_strength
 
-		# 	weights_Tao_mean  = weights.TAO.mean().to_frame(MainBenchmarks.TAO.value)
+		# 	weights_Tao_mean  = weights.TAO.mean().to_frame(params.MainBenchmarks.TAO.value)
 
 		# 	return pd.concat( [workers_strength, weights.PROPOSED * n_workers, weights_Tao_mean], axis=1)
 
@@ -1752,7 +1751,7 @@ class AIM1_3:
 	"""
 
 	@classmethod
-	def calculate_one_dataset(cls, config: 'Settings', dataset_name: DatasetNames=DatasetNames.IONOSPHERE) -> ResultComparisonsType:
+	def calculate_one_dataset(cls, config: 'Settings', dataset_name: params.DatasetNames=params.DatasetNames.IONOSPHERE) -> ResultComparisonsType:
 		"""
 		Calculates various output metrics and analyses for a given dataset using the provided configuration.
 
@@ -1763,8 +1762,8 @@ class AIM1_3:
 
 		Parameters:
 			config (Settings): Configuration settings that include parameters, dataset details, and other experiment configurations.
-			dataset_name (DatasetNames, optional): The identifier for the dataset to be processed.
-				Defaults to DatasetNames.IONOSPHERE.
+			dataset_name (params.DatasetNames, optional): The identifier for the dataset to be processed.
+				Defaults to params.DatasetNames.IONOSPHERE.
 
 		Returns:
 			ResultComparisonsType: An object containing:
@@ -1780,7 +1779,7 @@ class AIM1_3:
 		config.dataset.dataset_name = dataset_name
 
 		# loading the dataset
-		data, feature_columns = load_data.aim1_3_read_download_UCI_database(config=config)
+		data, feature_columns = dataset_loader.aim1_3_read_download_UCI_database(config=config)
 
 		aim1_3 = cls(data=data, feature_columns=feature_columns, config=config)
 
@@ -1798,7 +1797,7 @@ class AIM1_3:
 
 
 	@classmethod
-	def calculate_all_datasets(cls, config: 'Settings') -> Dict[DatasetNames, ResultComparisonsType]:
+	def calculate_all_datasets(cls, config: 'Settings') -> Dict[params.DatasetNames, ResultComparisonsType]:
 		return {dt: cls.calculate_one_dataset(dataset_name=dt, config=config) for dt in config.dataset.datasetNames}
 
 
@@ -1873,7 +1872,7 @@ class Aim1_3_Data_Analysis_Results:
 		return self
 
 
-	def get_result(self, metric_name='F_all', dataset_name: DatasetNames=DatasetNames.MUSHROOM, strategy=StrategyNames.FREQ , nl='NL3', seed_ix=0, method_name=ProposedTechniqueNames.PROPOSED, data_mode='test'):
+	def get_result(self, metric_name='F_all', dataset_name: params.DatasetNames=params.DatasetNames.MUSHROOM, strategy=params.StrategyNames.FREQ , nl='NL3', seed_ix=0, method_name=params.ProposedTechniqueNames.PROPOSED, data_mode='test'):
 		"""
 		Retrieve result metrics and data based on specified parameters.
 
@@ -1896,10 +1895,10 @@ class Aim1_3_Data_Analysis_Results:
 			- 'metrics_mean_over_seeds_per_dataset_per_worker': Metrics averaged over seeds
 			- 'metrics_all_datasets_workers': Comprehensive metrics across all datasets and worker counts
 
-		dataset_name : DatasetNames, default=DatasetNames.MUSHROOM
+		dataset_name : params.DatasetNames, default=params.DatasetNames.MUSHROOM
 			The dataset to retrieve results for.
 
-		strategy : StrategyNames, default=StrategyNames.FREQ
+		strategy : params.StrategyNames, default=params.StrategyNames.FREQ
 			The strategy used for aggregation or confidence calculation.
 
 		nl : str, default='NL3'
@@ -1908,7 +1907,7 @@ class Aim1_3_Data_Analysis_Results:
 		seed_ix : int, default=0
 			The simulation seed index to use.
 
-		method_name : ProposedTechniqueNames, default=ProposedTechniqueNames.PROPOSED
+		method_name : params.ProposedTechniqueNames, default=params.ProposedTechniqueNames.PROPOSED
 			The method to retrieve results for.
 
 		data_mode : str, default='test'
@@ -1920,36 +1919,36 @@ class Aim1_3_Data_Analysis_Results:
 			The requested metrics or data according to the specified parameters.
 		"""
 
-		metrics_list = [EvaluationMetricNames.AUC, EvaluationMetricNames.ACC, EvaluationMetricNames.F1]
+		metrics_list = [params.EvaluationMetricNames.AUC, params.EvaluationMetricNames.ACC, params.EvaluationMetricNames.F1]
 
 		def drop_proposed_rename_crowd_certain(dataframe, orient='columns'):
-			"""
-			Removes the proposed technique entry from the dataframe.
+				"""
+				Removes the proposed technique entry from the dataframe.
 
-			This function takes a dataframe and removes the entry corresponding to the proposed technique,
-			either from columns or from index depending on the orientation parameter.
+				This function takes a dataframe and removes the entry corresponding to the proposed technique,
+				either from columns or from index depending on the orientation parameter.
 
-			Parameters
-			----------
-			dataframe : pandas.DataFrame
-				The input dataframe containing technique data.
-			orient : str, default='columns'
-				Specifies the orientation from which to drop the proposed technique.
-				If 'columns', drops from columns; otherwise, drops from index.
+				Parameters
+				----------
+				dataframe : pandas.DataFrame
+					The input dataframe containing technique data.
+				orient : str, default='columns'
+					Specifies the orientation from which to drop the proposed technique.
+					If 'columns', drops from columns; otherwise, drops from index.
 
-			Returns
-			-------
-			pandas.DataFrame
-				A new dataframe with the proposed technique entry removed.
-			"""
+				Returns
+				-------
+				pandas.DataFrame
+					A new dataframe with the proposed technique entry removed.
+				"""
 
-			if orient == 'columns':
-				return dataframe.drop( columns=[ProposedTechniqueNames.PROPOSED] )
+				if orient == 'columns':
+					return dataframe.drop( columns=[params.ProposedTechniqueNames.PROPOSED] )
 
-			else:
-				return dataframe.drop( index=[ProposedTechniqueNames.PROPOSED] )
+				else:
+					return dataframe.drop( index=[params.ProposedTechniqueNames.PROPOSED] )
 
-		def get_metrics_mean_over_seeds(dataset_name1: DatasetNames, n_workers) -> pd.DataFrame:
+		def get_metrics_mean_over_seeds(dataset_name1: params.DatasetNames, n_workers) -> pd.DataFrame:
 			"""
 			Calculate the mean of metrics across different random seeds for a specific dataset and number of workers.
 
@@ -1958,7 +1957,7 @@ class Aim1_3_Data_Analysis_Results:
 
 			Parameters:
 			-----------
-			dataset_name1 : DatasetNames
+			dataset_name1 : params.DatasetNames
 				The name of the dataset for which to calculate metrics
 			n_workers : int
 				The number of workers in the crowdsourcing simulation
@@ -1983,7 +1982,7 @@ class Aim1_3_Data_Analysis_Results:
 
 			df = self.results_all_datasets[dataset_name].findings_confidence_score[metric_name][strategy][nl]
 
-			if strategy == StrategyNames.FREQ:
+			if strategy == params.StrategyNames.FREQ:
 				df = 1 - df
 
 			df['truth'] = self.results_all_datasets[dataset_name].outputs[nl][seed_ix].true_labels[data_mode].truth
@@ -1993,7 +1992,7 @@ class Aim1_3_Data_Analysis_Results:
 			return self.get_evaluation_metrics_for_confidence_scores(metric_name=metric_name, dataset_name=dataset_name, nl=nl)
 
 		elif metric_name == 'weight_strength_relation': # 'df_weight_stuff'
-			techniques: list[Any] = list(ProposedTechniqueNames) + [MainBenchmarks.TAO]
+			techniques: list[Any] = list(params.ProposedTechniqueNames) + [params.MainBenchmarks.TAO]
 			value_vars     = [n.value    for n in techniques]
 			rename_columns = {n: n.value for n in techniques}
 
@@ -2013,7 +2012,7 @@ class Aim1_3_Data_Analysis_Results:
 		elif metric_name in ['F', 'aggregated_labels','true_labels']:
 
 			if metric_name == 'F':
-				assert method_name in list(ProposedTechniqueNames) + list(MainBenchmarks)
+				assert method_name in list(params.ProposedTechniqueNames) + list(params.MainBenchmarks)
 				return self.results_all_datasets[dataset_name].outputs[nl][seed_ix].F[strategy][method_name]
 
 			elif metric_name in ['aggregated_labels']:
@@ -2049,7 +2048,7 @@ class Aim1_3_Data_Analysis_Results:
 				return df
 
 
-	def get_evaluation_metrics_for_confidence_scores(self, metric_name='F_eval_one_dataset_all_workers', dataset_name: DatasetNames=DatasetNames.IONOSPHERE, nl='NL3'):
+	def get_evaluation_metrics_for_confidence_scores(self, metric_name='F_eval_one_dataset_all_workers', dataset_name: params.DatasetNames=params.DatasetNames.IONOSPHERE, nl='NL3'):
 		"""
 		Calculates evaluation metrics for confidence scores across datasets or workers.
 
@@ -2063,7 +2062,7 @@ class Aim1_3_Data_Analysis_Results:
 			- 'F_eval_one_dataset_all_workers': Evaluate one dataset across all worker counts
 			- 'F_eval_one_worker_all_datasets': Evaluate one worker count across all datasets
 
-		dataset_name : DatasetNames, default=DatasetNames.IONOSPHERE
+		dataset_name : params.DatasetNames, default=params.DatasetNames.IONOSPHERE
 			The dataset to use when evaluating across workers.
 
 		nl : str, default='NL3'
@@ -2156,22 +2155,22 @@ class Aim1_3_Data_Analysis_Results:
 			raise ValueError('metric_name should be either workers or datasets')
 
 
-		index   = pd.MultiIndex.from_product([list(StrategyNames), [ProposedTechniqueNames.PROPOSED_PENALIZED] + list(MainBenchmarks)], names=['strategy', 'technique'])
+		index   = pd.MultiIndex.from_product([list(params.StrategyNames), [params.ProposedTechniqueNames.PROPOSED_PENALIZED] + list(params.MainBenchmarks)], names=['strategy', 'technique'])
 
-		columns = pd.MultiIndex.from_product([list(ConfidenceScoreNames), target_list], names=['metric', target_name])
+		columns = pd.MultiIndex.from_product([list(params.ConfidenceScoreNames), target_list], names=['metric', target_name])
 
 		df_cs   = pd.DataFrame(columns=columns, index=index)
 
-		techniques = [ProposedTechniqueNames.PROPOSED_PENALIZED, MainBenchmarks.TAO, MainBenchmarks.SHENG]
+		techniques = [params.ProposedTechniqueNames.PROPOSED_PENALIZED, params.MainBenchmarks.TAO, params.MainBenchmarks.SHENG]
 
-		for st in StrategyNames:
+		for st in params.StrategyNames:
 			for ix in target_list:
 				conf_scores = self.get_result(metric_name='F_pos_mean_over_seeds', strategy=st, **get_params(ix))
 				conf_scores = conf_scores[techniques + ['truth']]
 
 				for m in techniques:
-					df_cs[(ConfidenceScoreNames.ECE  ,ix)][(st, m)] = ece_score(conf_scores.truth, conf_scores[m])
-					df_cs[(ConfidenceScoreNames.BRIER,ix)][(st, m)] = brier_score_loss(conf_scores.truth, conf_scores[m])
+					df_cs[(params.ConfidenceScoreNames.ECE  ,ix)][(st, m)] = ece_score(conf_scores.truth, conf_scores[m])
+					df_cs[(params.ConfidenceScoreNames.BRIER,ix)][(st, m)] = brier_score_loss(conf_scores.truth, conf_scores[m])
 
 		return df_cs.astype(float)
 
@@ -2268,7 +2267,7 @@ class Aim1_3_Data_Analysis_Results:
 		self.save_outputs( filename=f'figure_{metric_name}', relative_path=relative_path, dataframe=df )
 
 
-	def figure_metrics_mean_over_seeds_per_dataset_per_worker(self, metric: EvaluationMetricNames=EvaluationMetricNames.ACC, nl=3, figsize=(10, 10), font_scale=1.8, fontsize=20, relative_path='final_figures'):
+	def figure_metrics_mean_over_seeds_per_dataset_per_worker(self, metric: params.EvaluationMetricNames=params.EvaluationMetricNames.ACC, nl=3, figsize=(10, 10), font_scale=1.8, fontsize=20, relative_path='final_figures'):
 		"""
 		Creates and saves a figure displaying the mean of a specified evaluation metric across seeds for each dataset per worker.
 
@@ -2277,7 +2276,7 @@ class Aim1_3_Data_Analysis_Results:
 
 		Parameters
 		----------
-		metric : EvaluationMetricNames, default=EvaluationMetricNames.ACC
+		metric : params.EvaluationMetricNames, default=params.EvaluationMetricNames.ACC
 			The evaluation metric to be plotted (e.g., accuracy, F1 score, etc.)
 		nl : int, default=3
 			The number of workers/labels per example to use for the analysis
@@ -2368,7 +2367,7 @@ class Aim1_3_Data_Analysis_Results:
 		sns.set(font_scale=font_scale, palette='colorblind', style='darkgrid', context='paper')
 
 		metric_name  = 'metrics_all_datasets_workers'
-		metrics_list = [EvaluationMetricNames.ACC, EvaluationMetricNames.AUC, EvaluationMetricNames.F1]
+		metrics_list = [params.EvaluationMetricNames.ACC, params.EvaluationMetricNames.AUC, params.EvaluationMetricNames.F1]
 
 		df: pd.DataFrame = self.get_result(metric_name=metric_name) # type: ignore
 		df = df.swaplevel(axis=1, i=1, j=2)
@@ -2395,7 +2394,7 @@ class Aim1_3_Data_Analysis_Results:
 		self.save_outputs( filename=f'figure_{metric_name}', relative_path=relative_path, dataframe=df )
 
 
-	def figure_F_heatmap(self, metric_name='F_eval_one_dataset_all_workers', dataset_name:DatasetNames=DatasetNames.IONOSPHERE, nl='NL3', fontsize=20, font_scale=1.8, figsize=(13, 11), relative_path='final_figures'):
+	def figure_F_heatmap(self, metric_name='F_eval_one_dataset_all_workers', dataset_name:params.DatasetNames=params.DatasetNames.IONOSPHERE, nl='NL3', fontsize=20, font_scale=1.8, figsize=(13, 11), relative_path='final_figures'):
 		"""
 		Create a heatmap visualization of confidence score evaluations.
 
@@ -2409,9 +2408,9 @@ class Aim1_3_Data_Analysis_Results:
 			The type of evaluation to perform, either 'F_eval_one_dataset_all_workers'
 			or 'F_eval_one_worker_all_datasets'. Default is 'F_eval_one_dataset_all_workers'.
 
-		dataset_name : DatasetNames, optional
+		dataset_name : params.DatasetNames, optional
 			Dataset to evaluate when using 'F_eval_one_dataset_all_workers'.
-			Default is DatasetNames.IONOSPHERE.
+			Default is params.DatasetNames.IONOSPHERE.
 
 		nl : str, optional
 			Worker noise level to evaluate when using 'F_eval_one_worker_all_datasets'.
@@ -2487,10 +2486,10 @@ class Aim1_3_Data_Analysis_Results:
 			fig, axes = plt.subplots(nrows=2, ncols=2, figsize=figsize, sharex=True, sharey=True, squeeze=True)
 
 			# Create heatmaps in a loop
-			create_heatmap(data=df[ConfidenceScoreNames.ECE].T[StrategyNames.FREQ],  ax=axes[0, 0], cmap='Reds', cbar=False, title=StrategyNames.FREQ.name, ylabel=ConfidenceScoreNames.ECE.name)
-			create_heatmap(data=df[ConfidenceScoreNames.ECE].T[StrategyNames.BETA],  ax=axes[0, 1], cmap='Reds', cbar=True,  title=StrategyNames.BETA.name)
-			create_heatmap(data=df[ConfidenceScoreNames.BRIER].T[StrategyNames.FREQ], ax=axes[1, 0], cmap='Blues', cbar=False, ylabel=ConfidenceScoreNames.BRIER.name)
-			create_heatmap(data=df[ConfidenceScoreNames.BRIER].T[StrategyNames.BETA], ax=axes[1, 1], cmap='Blues', cbar=True)
+			create_heatmap(data=df[params.ConfidenceScoreNames.ECE].T[params.StrategyNames.FREQ],  ax=axes[0, 0], cmap='Reds', cbar=False, title=params.StrategyNames.FREQ.name, ylabel=params.ConfidenceScoreNames.ECE.name)
+			create_heatmap(data=df[params.ConfidenceScoreNames.ECE].T[params.StrategyNames.BETA],  ax=axes[0, 1], cmap='Reds', cbar=True,  title=params.StrategyNames.BETA.name)
+			create_heatmap(data=df[params.ConfidenceScoreNames.BRIER].T[params.StrategyNames.FREQ], ax=axes[1, 0], cmap='Blues', cbar=False, ylabel=params.ConfidenceScoreNames.BRIER.name)
+			create_heatmap(data=df[params.ConfidenceScoreNames.BRIER].T[params.StrategyNames.BETA], ax=axes[1, 1], cmap='Blues', cbar=True)
 
 			fig.suptitle(subtitle, fontsize=int(1.5*fontsize), fontweight='bold')
 			plt.tight_layout()
@@ -2604,7 +2603,7 @@ class AIM1_3_Plot:
 
 		return xnew, y_smooth
 
-	def plot(self, xlabel='', ylabel='', xticks=True, title='', legend=None, smooth=True, interpolation_pt_count=1000, show_markers=ProposedTechniqueNames.PROPOSED):
+	def plot(self, xlabel='', ylabel='', xticks=True, title='', legend=None, smooth=True, interpolation_pt_count=1000, show_markers=params.ProposedTechniqueNames.PROPOSED):
 		"""
 		Plot the weight-strength relationship data.
 
@@ -2628,7 +2627,7 @@ class AIM1_3_Plot:
 		interpolation_pt_count : int, optional
 			Number of points to use for interpolation when smoothing, by default 1000
 		show_markers : str or list, optional
-			Which technique(s) to show markers for. Uses ProposedTechniqueNames.PROPOSED by default
+			Which technique(s) to show markers for. Uses params.ProposedTechniqueNames.PROPOSED by default
 
 			Returns:
 		-------
@@ -2693,8 +2692,8 @@ class AIM1_3_Plot:
 
 	@staticmethod
 	def _show_markers(show_markers, columns, x, y):
-		if show_markers in (ProposedTechniqueNames.PROPOSED, True):
-			cl = [i for i, x in enumerate(columns) if (ProposedTechniqueNames.PROPOSED in x) or ('method' in x)]
+		if show_markers in (params.ProposedTechniqueNames.PROPOSED, True):
+			cl = [i for i, x in enumerate(columns) if (params.ProposedTechniqueNames.PROPOSED in x) or ('method' in x)]
 			plt.plot(x, y[:, cl], 'o')
 
 		elif show_markers == 'all':

@@ -17,7 +17,7 @@ PathNoneType: TypeAlias = Union[pathlib.Path, None]
 class DatasetSettings(BaseModel):
 	data_mode         : DataModes          = DataModes.TRAIN
 	path_all_datasets : pathlib.Path       = pathlib.Path('datasets')
-	dataset_name      : DatasetNames       = DatasetNames.KR_VS_KP
+	dataset_name      : DatasetNames       = DatasetNames.CHESS
 	datasetNames      : list[DatasetNames] = Field(default=None)
 	non_null_samples  : bool               = True
 	random_state      : int                = 0

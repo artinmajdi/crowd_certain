@@ -45,20 +45,24 @@ class ReadMode(EnumWithHelpers):
 	READ_ARFF = 'read_arff'
 	READ      = 'read'
 	DOWNLOAD  = 'download'
+	AUTO      = 'auto'
 
 
 # @members
 class DatasetNames(EnumWithHelpers):
-	KR_VS_KP    = "kr-vs-kp"
-	MUSHROOM    = "mushroom"
-	IRIS        = "iris"
-	SPAMBASE    = "spambase"
-	TIC_TAC_TOE = "tic-tac-toe"
-	SICK        = "sick"
-	WAVEFORM    = "waveform"
-	CAR         = "car"
-	VOTE        = "vote"
-	IONOSPHERE  = "ionosphere"
+	CHESS      = "chess"           # ID: 22 - Chess (King-Rook vs. King-Pawn)
+	MUSHROOM   = "mushroom"        # ID: 73
+	IRIS       = "iris"            # ID: 53
+	SPAMBASE   = "spambase"        # ID: 94
+	TIC_TAC_TOE = "tic-tac-toe"    # ID: 101
+	HEART      = "heart"           # ID: 45 - Heart Disease (replacement for SICK)
+	WAVEFORM   = "waveform"        # ID: 107
+	CAR        = "car"             # ID: 19
+	VOTE       = "vote"            # ID: 105 - Congressional Voting Records
+	IONOSPHERE = "ionosphere"      # ID: 52
+	BREAST_CANCER = "breast-cancer" # ID: 17 - Breast Cancer Wisconsin (Diagnostic)
+	BANKNOTE   = "banknote"        # ID: 267 - Banknote Authentication
+	SONAR      = "sonar"           # ID: 151 - Sonar, Mines vs. Rocks
 
 # @members
 class DataModes(EnumWithHelpers):

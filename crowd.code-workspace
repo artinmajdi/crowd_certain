@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../../../dissertation/Chapters/crowd/crowd - Journal Papers/JMLR"
+		}
+	],
+	"settings": {
+		"debug.console.fontSize": 16,
+		"notebook.output.fontSize": 14,
+		"notebook.output.lineHeight": 0,
+		"hide-files.files": []
+	}
+}

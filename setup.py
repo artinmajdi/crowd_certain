@@ -1,70 +1,90 @@
-import subprocess
-import sys
+"""
+Setup configuration for the Crowd-Certain package.
 
+This module handles the installation and packaging of the Crowd-Certain library,
+which provides tools for crowd-sourced label aggregation with uncertainty estimation
+and confidence scoring.
+"""
+
+import os
 from setuptools import find_packages, setup
-from setuptools.command.install import install
 
+# Read the README file
+with open("README.md", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
 
-class CustomInstallCommand(install):
-    """Customized setuptools install command to use conda if available."""
+# Read requirements
+with open("requirements.txt", "r", encoding="utf-8") as fh:
+    requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
 
-    def run(self):
+# Package metadata
+PACKAGE_NAME = "crowd-certain"
+VERSION = "1.0.0"
+AUTHOR = "Artin Majdi"
+AUTHOR_EMAIL = "msm2024@gmail.com"
+DESCRIPTION = "A comprehensive framework for crowd-sourced label aggregation with uncertainty estimation and confidence scoring"
+URL = "https://github.com/artinmajdi/taxonomy"
+LICENSE = "Apache License 2.0"
 
-        conda_available = False
-        mamba_available = False
+# Classifiers for PyPI
+CLASSIFIERS = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
 
-        try:
-
-            # Check if conda is available
-            subprocess.check_call(['conda', '--version'])
-            conda_available = True
-
-            # Check if mamba is available
-            subprocess.check_call(['mamba', '--version'])
-            mamba_available = True
-
-        except subprocess.CalledProcessError:
-            pass
-
-        if conda_available:
-
-            if not mamba_available:
-                print('Mamba is not available. Installing mamba using conda.')
-                subprocess.check_call(['conda', 'install', '-c', 'conda-forge', 'mamba', '-y'])
-
-            print('Installing using mamba')
-            subprocess.check_call(['mamba', 'env', 'update', '--file', 'requirements.yml'])
-
-        else:
-            print('Conda is not available. Installing using pip')
-            # If conda is not available, use pip to install requirements
-            subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'])
-
-        # Proceed with the standard installation
-        install.run(self)
-
-REQUIREMENTS = [i.strip() for i in open("requirements.txt").readlines()]
+# Package data
+PACKAGE_DATA = {
+    "crowd_certain": [
+        "config.json",
+        "docs/*",
+        "scripts/*",
+        "utilities/*",
+        "datasets/*",
+        "notebooks/*",
+        "outputs/*",
+    ]
+}
 
 setup(
-    name="crowd-certain",
-    version="1.0.0",
-    author="Artin Majdi",
-    author_email="msm2024@gmail.com",
-    description="Crowd Sourced Label Augmentation",
-    url="https://github.com/artinmajdi/taxonomy",
-    classifiers=[
-        "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: Apache Software License",
-        "Operating System :: OS Independent",
-        "Topic :: Scientific/Engineering :: Medical Science Apps."
-    ],
-    python_requires='>=3.10',
-    install_requires=REQUIREMENTS,
+    name=PACKAGE_NAME,
+    version=VERSION,
+    author=AUTHOR,
+    author_email=AUTHOR_EMAIL,
+    description=DESCRIPTION,
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    url=URL,
+    license=LICENSE,
+    classifiers=CLASSIFIERS,
+    python_requires=">=3.10",
+    install_requires=requirements,
     packages=find_packages(),
-    package_dir={'crowd_certain': 'crowd_certain'},
-    package_data={'crowd_certain': ['crowd_certain/config.json']},
+    package_data=PACKAGE_DATA,
     include_package_data=True,
     zip_safe=False,
-    entry_points={'console_scripts': ['myutility=crowd_certain.main:main']},
-    cmdclass={'install': CustomInstallCommand}
+    entry_points={
+        "console_scripts": [
+            "crowd-certain=crowd_certain.run_streamlit:main",
+        ],
+    },
+    keywords=[
+        "crowd-sourcing",
+        "label-aggregation",
+        "uncertainty-estimation",
+        "confidence-scoring",
+        "machine-learning",
+        "data-science",
+    ],
+    project_urls={
+        "Bug Tracker": f"{URL}/issues",
+        "Documentation": f"{URL}/blob/main/crowd_certain/docs/README.md",
+        "Source Code": URL,
+    },
 )

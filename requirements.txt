@@ -1,12 +1,44 @@
-matplotlib
-numpy
-pandas
-scikit-learn
-scipy
-seaborn
-setuptools
-tqdm
-wget
-crowd-kit
-jupyter
-ipywidgets
+# Core scientific computing dependencies
+numpy>=2.2.3
+pandas>=2.2.3
+scipy>=1.15.2
+matplotlib>=3.10.1
+seaborn>=0.13.2
+scikit-learn>=1.6.1
+
+# Crowd-sourcing and data processing
+crowd-kit>=1.4.1
+wget>=3.2
+
+# Data validation and type checking
+pydantic>=2.10.6
+typing-extensions>=4.12.2
+
+# Interactive visualization and dashboard
+streamlit>=1.43.2
+plotly>=6.0.0
+
+# Jupyter notebook support
+jupyter>=1.1.1
+ipywidgets>=8.1.5
+notebook>=7.3.3
+
+# Development and testing
+pytest>=8.3.5
+black>=25.1.0
+isort>=6.0.1
+flake8>=7.1.2
+mypy>=1.15.0
+
+# Documentation
+sphinx>=8.2.3
+sphinx-rtd-theme>=3.0.2
+sphinx-autodoc-typehints>=3.1.0
+
+# Progress tracking
+tqdm>=4.67.1
+
+# Package management
+setuptools>=76.0.0
+wheel>=0.45.1
+watchdog>=6.0.0
