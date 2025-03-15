@@ -7,6 +7,7 @@ Welcome to the Crowd-Certain documentation. This documentation provides comprehe
 - [README](README.md) - Overview of the project
 - [Installation Guide](INSTALLATION.md) - How to install the library
 - [Usage Guide](USAGE.md) - How to use the library
+- [Examples](EXAMPLES.md) - Example scripts demonstrating library usage
 - [Dashboard](DASHBOARD.md) - Interactive dashboard for visualizing results
 - [API Reference](API.md) - Detailed API documentation
 
@@ -26,5 +27,6 @@ Crowd-Certain is a comprehensive framework for aggregating labels from multiple 
 - [Installation](INSTALLATION.md#installation-methods)
 - [Basic Usage](USAGE.md#basic-usage)
 - [Advanced Usage](USAGE.md#advanced-usage)
+- [Examples](EXAMPLES.md)
 - [Dashboard](DASHBOARD.md#running-the-dashboard)
 - [API Reference](API.md#api-reference)

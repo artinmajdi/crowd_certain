@@ -39,7 +39,9 @@ class DatasetSettings(BaseModel):
 
 	@field_validator('path_all_datasets', mode='after')
 	def make_path_absolute(cls, v: pathlib.Path):
-		return (pathlib.Path(__file__).parents[1] / v).resolve()
+		path = (pathlib.Path(__file__).parents[1] / v).resolve()
+		print(f"------- path_all_datasets{path}")
+		return path
 
 
 # @add_path_validator

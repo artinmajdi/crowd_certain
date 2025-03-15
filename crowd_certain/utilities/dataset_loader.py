@@ -15,6 +15,7 @@ class Dict2Class(object):
 def aim1_3_read_download_UCI_database(config, dataset_name=''):
     """
     Load a dataset from the UCI Machine Learning Repository using the ucimlrepo library.
+    First checks if the dataset is available locally, and only downloads it if not found.
 
     Args:
         config: Configuration object with dataset settings
@@ -51,6 +52,14 @@ def aim1_3_read_download_UCI_database(config, dataset_name=''):
 
     print(f"Loading dataset: {dataset_name.value} (ID: {dataset_id}) from UCI ML Repository")
 
+    # First try to load from local cache
+    try:
+        return load_from_local_cache(config, dataset_name)
+    except Exception as local_e:
+        print(f"Local dataset not found or could not be loaded: {str(local_e)}")
+        print("Downloading from UCI ML Repository...")
+
+    # If local cache failed, download from UCI
     try:
         # Fetch the dataset from ucimlrepo
         dataset = fetch_ucirepo(id=dataset_id)
@@ -72,6 +81,9 @@ def aim1_3_read_download_UCI_database(config, dataset_name=''):
         # Process the dataset based on its type
         data_raw, feature_columns = process_dataset(data_raw, dataset_name)
 
+        # Save the processed dataset to local cache for future use
+        save_to_local_cache(config, dataset_name, data_raw)
+
         # Split into train and test sets
         data = separate_train_test(data_raw, train_frac=config.dataset.train_test_ratio,
                                   random_state=config.dataset.random_state)
@@ -79,15 +91,8 @@ def aim1_3_read_download_UCI_database(config, dataset_name=''):
         return data, feature_columns
 
     except Exception as e:
-        print(f"Error loading dataset from ucimlrepo: {str(e)}")
-        print("Falling back to local dataset if available...")
-
-        # Try to load from local cache if available
-        try:
-            return load_from_local_cache(config, dataset_name)
-        except Exception as local_e:
-            print(f"Error loading from local cache: {str(local_e)}")
-            raise ValueError(f"Could not load dataset {dataset_name.value} from ucimlrepo or local cache")
+        print(f"Error downloading dataset from ucimlrepo: {str(e)}")
+        raise ValueError(f"Could not load dataset {dataset_name.value} from ucimlrepo or local cache")
 
 def process_dataset(data_raw, dataset_name):
     """
@@ -194,29 +199,58 @@ def load_from_local_cache(config, dataset_name):
             - Dictionary with 'train' and 'test' DataFrames
             - List of feature column names
     """
-    dataset_path = config.dataset.path_all_datasets
+    # Get or create the dataset directory
+    base_dataset_dir = config.dataset.path_all_datasets
+    if not base_dataset_dir.exists():
+        print(f"Dataset directory {base_dataset_dir} does not exist. Creating it.")
+        os.makedirs(base_dataset_dir, exist_ok=True)
 
-    # Try different possible paths for the dataset
+        # Try alternative paths if the specified one doesn't exist
+        alt_paths = [
+            pathlib.Path('datasets'),
+            pathlib.Path('crowd_certain/datasets'),
+            pathlib.Path(__file__).parent.parent / 'datasets'
+        ]
+
+        for alt_path in alt_paths:
+            if alt_path.exists():
+                print(f"Using alternative dataset path: {alt_path}")
+                base_dataset_dir = alt_path
+                break
+
+    # Look for dataset in possible locations - only using the specified formats
+    dataset_name_str = dataset_name.value
     possible_paths = [
-        dataset_path / f'UCI_{dataset_name.value}/{dataset_name.value}.data',
-        # dataset_path / f'{dataset_name.value}/{dataset_name.value}.data',
-        # pathlib.Path('datasets') / f'UCI_{dataset_name.value}/{dataset_name.value}.data',
-        # pathlib.Path('datasets') / f'{dataset_name.value}/{dataset_name.value}.data'
+        base_dataset_dir / f'{dataset_name_str}/{dataset_name_str}.data',
+        base_dataset_dir / f'{dataset_name_str}/{dataset_name_str}.csv',
     ]
 
-    # Check if any of the paths exist
-    filepath = None
+    # Print all paths being checked (for debugging)
+    print(f"Checking the following paths for dataset {dataset_name_str}:")
     for path in possible_paths:
-        if path.exists():
-            filepath = path
-            print(f"Found dataset in local cache at {filepath}")
-            break
+        print(f"  - {path} (exists: {path.exists()})")
 
-    if filepath is None:
-        raise FileNotFoundError(f"Could not find dataset {dataset_name.value} in local cache")
+    # Find the first existing dataset file
+    dataset_file = next((path for path in possible_paths if path.exists()), None)
 
-    # Read the data
-    data_raw = pd.read_csv(filepath)
+    if not dataset_file:
+        raise FileNotFoundError(f"Could not find dataset {dataset_name_str} in local cache. Checked paths: {[str(p) for p in possible_paths]}")
+
+    print(f"Found dataset in local cache at {dataset_file}")
+
+    # Read the data based on file extension
+    try:
+        if dataset_file.suffix == '.csv':
+            data_raw = pd.read_csv(dataset_file)
+        elif dataset_file.suffix == '.data':
+            data_raw = pd.read_csv(dataset_file, header=None)
+            # Ensure the target column is named 'true'
+            if 'true' not in data_raw.columns:
+                data_raw = data_raw.rename(columns={data_raw.columns[-1]: 'true'})
+        else:
+            raise ValueError(f"Unsupported file format: {dataset_file.suffix}")
+    except Exception as e:
+        raise ValueError(f"Error reading dataset file {dataset_file}: {str(e)}")
 
     # Process the dataset
     data_raw, feature_columns = process_dataset(data_raw, dataset_name)
@@ -226,6 +260,48 @@ def load_from_local_cache(config, dataset_name):
                               random_state=config.dataset.random_state)
 
     return data, feature_columns
+
+def save_to_local_cache(config, dataset_name, data_raw):
+    """
+    Save a dataset to the local cache for future use.
+
+    Args:
+        config: Configuration object with dataset settings
+        dataset_name: Name of the dataset
+        data_raw: DataFrame with the processed dataset
+    """
+    # Define the base dataset directory
+    base_dataset_dir = config.dataset.path_all_datasets
+
+    # Ensure the directory exists
+    if not base_dataset_dir.exists():
+        print(f"Creating dataset directory: {base_dataset_dir}")
+        os.makedirs(base_dataset_dir, exist_ok=True)
+
+    # Create a standardized path for the dataset - always using the specified format
+    dataset_name_str = dataset_name.value
+    dataset_dir = base_dataset_dir / dataset_name_str
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+
+    dataset_file = dataset_dir / f"{dataset_name_str}.csv"
+
+    # Save the dataset
+    try:
+        data_raw.to_csv(dataset_file, index=False)
+        print(f"Saved dataset to local cache at {dataset_file}")
+    except Exception as e:
+        print(f"Warning: Could not save dataset to local cache: {str(e)}")
+
+        # Try an alternative location if the primary one fails, still using the specified format
+        try:
+            alt_base_dir = pathlib.Path(__file__).parent.parent / 'datasets'
+            alt_dir = alt_base_dir / dataset_name_str
+            alt_dir.mkdir(parents=True, exist_ok=True)
+            alt_file = alt_dir / f"{dataset_name_str}.csv"
+            data_raw.to_csv(alt_file, index=False)
+            print(f"Saved dataset to alternative location: {alt_file}")
+        except Exception as alt_e:
+            print(f"Failed to save dataset to alternative location: {str(alt_e)}")
 
 
 

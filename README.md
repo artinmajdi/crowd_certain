@@ -105,6 +105,7 @@ crowd-certain/
 ├── crowd_certain/       # Main package code
 │   ├── datasets/        # Dataset handling
 │   ├── docs/            # Documentation
+│   ├── examples/        # Example scripts
 │   ├── notebooks/       # Jupyter notebooks
 │   ├── outputs/         # Output files
 │   ├── scripts/         # Installation and utility scripts
@@ -119,6 +120,8 @@ crowd-certain/
 ├── requirements.txt     # Python dependencies (pip)
 └── requirements.yml     # Conda environment specification
 ```
+
+For more information about the example scripts, see the [Examples Documentation](crowd_certain/docs/EXAMPLES.md).
 
 ## License
 

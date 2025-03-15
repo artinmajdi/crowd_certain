@@ -1,3 +1,11 @@
+"""
+Crowd-Certain Dashboard
+
+A Streamlit-based dashboard for visualizing and interacting with the Crowd-Certain framework.
+This dashboard allows users to run simulations, analyze results, and explore the performance
+of different crowd-sourced label aggregation techniques.
+"""
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,212 +14,328 @@ import seaborn as sns
 import sys
 import os
 from pathlib import Path
+from typing import Dict, List, Any, Optional, Tuple, Union
 
 # Import directly from the utilities module since we're now in the same package
 from crowd_certain.utilities.utils import AIM1_3
-from crowd_certain.utilities.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques
+from crowd_certain.utilities.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques, ReadMode
 from crowd_certain.utilities.settings import Settings, OutputModes
-from crowd_certain.utilities.params import ReadMode
 
-# Set page configuration
-st.set_page_config(
-    page_title="Crowd-Certain Dashboard",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
 
-# Add custom CSS
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #4B8BBE;
-        margin-bottom: 1rem;
-    }
-    .sub-header {
-        font-size: 1.5rem;
-        font-weight: bold;
-        color: #306998;
-        margin-bottom: 0.5rem;
-    }
-    .info-box {
-        background-color: #f0f2f6;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin-bottom: 1rem;
-    }
-    .result-box {
-        background-color: #e6f3ff;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin-bottom: 1rem;
-    }
-</style>
-""", unsafe_allow_html=True)
+class DashboardStyles:
+    """Manages CSS styles for the dashboard."""
 
-# Header
-st.markdown('<div class="main-header">Crowd-Certain: Crowd-Sourced Label Aggregation</div>', unsafe_allow_html=True)
-st.markdown("""
-Crowd-Certain is a comprehensive framework for aggregating labels from multiple annotators (crowd workers)
-while estimating the uncertainty and confidence in the aggregated labels.
-""")
+    @staticmethod
+    def apply_styles() -> None:
+        """Apply custom CSS styles to the dashboard."""
+        st.markdown("""
+        <style>
+            .main-header {
+                font-size: 2.5rem;
+                font-weight: bold;
+                color: #4B8BBE;
+                margin-bottom: 1rem;
+            }
+            .sub-header {
+                font-size: 1.5rem;
+                font-weight: bold;
+                color: #306998;
+                margin-bottom: 0.5rem;
+            }
+            .info-box {
+                background-color: #f0f2f6;
+                padding: 1rem;
+                border-radius: 0.5rem;
+                margin-bottom: 1rem;
+            }
+            .result-box {
+                background-color: #e6f3ff;
+                padding: 1rem;
+                border-radius: 0.5rem;
+                margin-bottom: 1rem;
+            }
+        </style>
+        """, unsafe_allow_html=True)
 
-# Sidebar
-st.sidebar.markdown('<div class="sub-header">Configuration</div>', unsafe_allow_html=True)
 
-# Dataset selection
-dataset_options = {name.value: name for name in DatasetNames}
-selected_dataset_value = st.sidebar.selectbox(
-    "Select Dataset",
-    options=list(dataset_options.keys()),
-    index=list(dataset_options.keys()).index("ionosphere"),
-    help="Choose a dataset to run the simulation on"
-)
-selected_dataset = dataset_options[selected_dataset_value]
+class SidebarConfig:
+    """Manages the sidebar configuration options."""
 
-# Number of workers
-n_workers_min = st.sidebar.slider(
-    "Minimum Number of Workers",
-    min_value=2,
-    max_value=10,
-    value=3,
-    help="Minimum number of workers in the simulation"
-)
+    def __init__(self):
+        """Initialize the sidebar configuration."""
+        self.dataset_options = {name.value: name for name in DatasetNames}
+        self.uncertainty_options = {tech.value: tech for tech in UncertaintyTechniques}
+        self.consistency_options = {tech.value: tech for tech in ConsistencyTechniques}
 
-n_workers_max = st.sidebar.slider(
-    "Maximum Number of Workers",
-    min_value=n_workers_min,
-    max_value=20,
-    value=8,
-    help="Maximum number of workers in the simulation"
-)
+        # Default values
+        self.selected_dataset_value = "ionosphere"
+        self.n_workers_min = 3
+        self.n_workers_max = 8
+        self.low_quality = 0.4
+        self.high_quality = 1.0
+        self.selected_uncertainty_values = [UncertaintyTechniques.STD.value]
+        self.selected_consistency_values = [ConsistencyTechniques.ONE_MINUS_UNCERTAINTY.value]
+        self.num_seeds = 3
+        self.auto_download = True
+        self.read_mode = ReadMode.AUTO.value
 
-# Worker quality range
-worker_quality_col1, worker_quality_col2 = st.sidebar.columns(2)
-with worker_quality_col1:
-    low_quality = st.number_input(
-        "Minimum Worker Quality",
-        min_value=0.0,
-        max_value=1.0,
-        value=0.4,
-        step=0.05,
-        help="Minimum worker quality (0.0 = random guessing, 1.0 = perfect)"
-    )
-with worker_quality_col2:
-    high_quality = st.number_input(
-        "Maximum Worker Quality",
-        min_value=low_quality,
-        max_value=1.0,
-        value=1.0,
-        step=0.05,
-        help="Maximum worker quality (0.0 = random guessing, 1.0 = perfect)"
-    )
+        # Get the correct dataset path
+        self.dataset_path = self._get_correct_dataset_path()
 
-# Uncertainty techniques
-uncertainty_options = {tech.value: tech for tech in UncertaintyTechniques}
-selected_uncertainty_values = st.sidebar.multiselect(
-    "Uncertainty Techniques",
-    options=list(uncertainty_options.keys()),
-    default=[UncertaintyTechniques.STD.value],
-    help="Techniques to measure uncertainty in worker predictions"
-)
-selected_uncertainty = [uncertainty_options[val] for val in selected_uncertainty_values]
+    def _get_correct_dataset_path(self) -> Path:
+        """
+        Get the correct dataset path without duplication.
 
-# Consistency techniques
-consistency_options = {tech.value: tech for tech in ConsistencyTechniques}
-selected_consistency_values = st.sidebar.multiselect(
-    "Consistency Techniques",
-    options=list(consistency_options.keys()),
-    default=[ConsistencyTechniques.ONE_MINUS_UNCERTAINTY.value],
-    help="Techniques to convert uncertainty to consistency scores"
-)
-selected_consistency = [consistency_options[val] for val in selected_consistency_values]
+        Returns:
+            Path object pointing to the datasets directory
+        """
+        # Start with the current file's directory
+        current_dir = Path(__file__).parent.parent
 
-# Number of seeds
-num_seeds = st.sidebar.slider(
-    "Number of Random Seeds",
-    min_value=1,
-    max_value=10,
-    value=3,
-    help="Number of random seeds to use for the simulation"
-)
+        # Create path to datasets directory
+        datasets_dir = current_dir / "datasets"
 
-# Advanced options
-with st.sidebar.expander("Advanced Options"):
-    auto_download = st.checkbox(
-        "Auto-download Datasets",
-        value=True,
-        help="Automatically download datasets if they are not found locally"
-    )
+        # If running from the installed package, the path might be different
+        if not datasets_dir.exists():
+            # Try alternative paths
+            alt_path = Path.cwd() / "datasets"
+            if alt_path.exists():
+                return alt_path
 
-    read_mode = st.selectbox(
-        "Read Mode",
-        options=[mode.value for mode in ReadMode],
-        index=3,  # AUTO mode
-        help="Method to read datasets"
-    )
+            # Another common location
+            alt_path = Path.cwd() / "crowd_certain" / "datasets"
+            if alt_path.exists():
+                return alt_path
 
-# Run button
-run_simulation = st.sidebar.button("Run Simulation", type="primary")
+            # Create the directory if it doesn't exist
+            print(f"Creating datasets directory at: {datasets_dir}")
+            datasets_dir.mkdir(parents=True, exist_ok=True)
 
-# Main content
-tab1, tab2, tab3 = st.tabs(["Simulation Results", "Worker Analysis", "About"])
+        # Verify the structure by checking for at least one dataset directory
+        if datasets_dir.exists():
+            # Check if any dataset directories exist
+            dataset_dirs = [d for d in datasets_dir.iterdir() if d.is_dir() and d.name in [name.value for name in DatasetNames]]
+            if dataset_dirs:
+                print(f"Found {len(dataset_dirs)} dataset directories in {datasets_dir}")
+            else:
+                print(f"No dataset directories found in {datasets_dir}. Will create them as needed.")
 
-with tab1:
-    st.markdown('<div class="sub-header">Simulation Results</div>', unsafe_allow_html=True)
+        return datasets_dir
 
-    if run_simulation:
-        with st.spinner("Running simulation..."):
-            # Create configuration
-            config = Settings(
-                dataset=dict(
-                    dataset_name=selected_dataset,
-                    datasetNames=[selected_dataset],
-                    read_mode=ReadMode(read_mode),
-                    path_all_datasets=Path("crowd_certain/datasets")
-                ),
-                simulation=dict(
-                    n_workers_min_max=[n_workers_min, n_workers_max],
-                    low_dis=low_quality,
-                    high_dis=high_quality,
-                    num_seeds=num_seeds,
-                ),
-                technique=dict(
-                    uncertainty_techniques=selected_uncertainty,
-                    consistency_techniques=selected_consistency,
-                ),
-                output=dict(
-                    mode=OutputModes.CALCULATE,
-                    save=False,
-                )
+    def render(self) -> None:
+        """Render the sidebar configuration options."""
+        st.sidebar.markdown('<div class="sub-header">Configuration</div>', unsafe_allow_html=True)
+
+        # Dataset selection
+        self.selected_dataset_value = st.sidebar.selectbox(
+            "Select Dataset",
+            options=list(self.dataset_options.keys()),
+            index=list(self.dataset_options.keys()).index(self.selected_dataset_value),
+            help="Choose a dataset to run the simulation on"
+        )
+
+        # Number of workers
+        self.n_workers_min = st.sidebar.slider(
+            "Minimum Number of Workers",
+            min_value=2,
+            max_value=10,
+            value=self.n_workers_min,
+            help="Minimum number of workers in the simulation"
+        )
+
+        self.n_workers_max = st.sidebar.slider(
+            "Maximum Number of Workers",
+            min_value=self.n_workers_min,
+            max_value=20,
+            value=self.n_workers_max,
+            help="Maximum number of workers in the simulation"
+        )
+
+        # Worker quality range
+        worker_quality_col1, worker_quality_col2 = st.sidebar.columns(2)
+        with worker_quality_col1:
+            self.low_quality = st.number_input(
+                "Minimum Worker Quality",
+                min_value=0.0,
+                max_value=1.0,
+                value=self.low_quality,
+                step=0.05,
+                help="Minimum worker quality (0.0 = random guessing, 1.0 = perfect)"
+            )
+        with worker_quality_col2:
+            self.high_quality = st.number_input(
+                "Maximum Worker Quality",
+                min_value=self.low_quality,
+                max_value=1.0,
+                value=self.high_quality,
+                step=0.05,
+                help="Maximum worker quality (0.0 = random guessing, 1.0 = perfect)"
             )
 
-            # Check if dataset exists
-            dataset_path = config.dataset.path_all_datasets / f"{selected_dataset_value}/{selected_dataset_value}.arff"
-            if not dataset_path.exists() and auto_download:
-                st.info(f"Dataset {selected_dataset_value} not found locally. Downloading...")
+        # Uncertainty techniques
+        self.selected_uncertainty_values = st.sidebar.multiselect(
+            "Uncertainty Techniques",
+            options=list(self.uncertainty_options.keys()),
+            default=self.selected_uncertainty_values,
+            help="Techniques to measure uncertainty in worker predictions"
+        )
+
+        # Consistency techniques
+        self.selected_consistency_values = st.sidebar.multiselect(
+            "Consistency Techniques",
+            options=list(self.consistency_options.keys()),
+            default=self.selected_consistency_values,
+            help="Techniques to convert uncertainty to consistency scores"
+        )
+
+        # Number of seeds
+        self.num_seeds = st.sidebar.slider(
+            "Number of Random Seeds",
+            min_value=1,
+            max_value=10,
+            value=self.num_seeds,
+            help="Number of random seeds to use for the simulation"
+        )
+
+        # Advanced options
+        with st.sidebar.expander("Advanced Options"):
+            self.auto_download = st.checkbox(
+                "Auto-download Datasets",
+                value=self.auto_download,
+                help="Automatically download datasets if they are not found locally"
+            )
+
+            self.read_mode = st.selectbox(
+                "Read Mode",
+                options=[mode.value for mode in ReadMode],
+                index=[mode.value for mode in ReadMode].index(self.read_mode),
+                help="Method to read datasets"
+            )
+
+            # Add option to manually specify dataset path
+            use_custom_path = st.checkbox(
+                "Use Custom Dataset Path",
+                value=False,
+                help="Specify a custom path to the datasets directory"
+            )
+
+            if use_custom_path:
+                custom_path = st.text_input(
+                    "Custom Dataset Path",
+                    value=str(self.dataset_path),
+                    help="Full path to the directory containing the datasets"
+                )
+                if custom_path:
+                    self.dataset_path = Path(custom_path)
+                    st.info(f"Using custom dataset path: {self.dataset_path}")
+
+                    # Check if path exists
+                    if not self.dataset_path.exists():
+                        st.warning(f"Warning: The specified path does not exist. It will be created when needed.")
+                    else:
+                        # List available datasets at this path
+                        available_datasets = [d.name for d in self.dataset_path.iterdir() if d.is_dir()]
+                        if available_datasets:
+                            st.success(f"Found dataset directories: {', '.join(available_datasets)}")
+                        else:
+                            st.warning("No dataset directories found at this path.")
+
+    def get_selected_dataset(self) -> DatasetNames:
+        """Get the selected dataset as a DatasetNames enum."""
+        return self.dataset_options[self.selected_dataset_value]
+
+    def get_selected_uncertainty(self) -> List[UncertaintyTechniques]:
+        """Get the selected uncertainty techniques as UncertaintyTechniques enums."""
+        return [self.uncertainty_options[val] for val in self.selected_uncertainty_values]
+
+    def get_selected_consistency(self) -> List[ConsistencyTechniques]:
+        """Get the selected consistency techniques as ConsistencyTechniques enums."""
+        return [self.consistency_options[val] for val in self.selected_consistency_values]
+
+    def create_config(self) -> Settings:
+        """Create a Settings object from the current configuration."""
+        return Settings(
+            dataset=dict(
+                dataset_name=self.get_selected_dataset(),
+                datasetNames=[self.get_selected_dataset()],
+                read_mode=ReadMode(self.read_mode),
+                path_all_datasets=self.dataset_path
+            ),
+            simulation=dict(
+                n_workers_min_max=[self.n_workers_min, self.n_workers_max],
+                low_dis=self.low_quality,
+                high_dis=self.high_quality,
+                num_seeds=self.num_seeds,
+            ),
+            technique=dict(
+                uncertainty_techniques=self.get_selected_uncertainty(),
+                consistency_techniques=self.get_selected_consistency(),
+            ),
+            output=dict(
+                mode=OutputModes.CALCULATE,
+                save=False,
+            )
+        )
+
+
+class SimulationRunner:
+    """Handles running simulations and displaying results."""
+
+    def __init__(self, config: SidebarConfig):
+        """Initialize the simulation runner with configuration."""
+        self.config = config
+
+    def run_simulation(self) -> None:
+        """Run the simulation with the current configuration."""
+        with st.spinner("Running simulation..."):
+            # Create configuration
+            settings = self.config.create_config()
+
+            # Check if dataset exists and show appropriate message
+            dataset_dir = settings.dataset.path_all_datasets / self.config.selected_dataset_value
+            dataset_file = dataset_dir / f"{self.config.selected_dataset_value}.csv"
+
+            # Display dataset path information (can be removed in production)
+            st.info(f"Looking for dataset at: {dataset_file}")
+            st.info(f"Dataset base directory: {settings.dataset.path_all_datasets}")
+
+            if not dataset_file.exists():
+                if self.config.auto_download:
+                    st.info(f"Dataset {self.config.selected_dataset_value} not found locally. Will attempt to download...")
+                else:
+                    st.warning(f"Dataset {self.config.selected_dataset_value} not found locally and auto-download is disabled. The simulation may fail.")
 
             # Run the simulation
             try:
-                results = AIM1_3.calculate_one_dataset(config=config)
+                results = AIM1_3.calculate_one_dataset(config=settings)
                 st.session_state.results = results
-                st.success(f"Simulation completed successfully for {selected_dataset_value} dataset!")
+                st.success(f"Simulation completed successfully for {self.config.selected_dataset_value} dataset!")
             except Exception as e:
                 st.error(f"Error running simulation: {str(e)}")
                 st.exception(e)
 
                 # Provide helpful message for common errors
                 error_str = str(e)
-                if "Could not find or download dataset" in error_str:
+                if "Could not load dataset" in error_str:
                     st.warning(
                         "The dataset could not be found or downloaded. Please check your internet connection "
                         "and try again. If the problem persists, you can manually download the dataset from "
-                        "the UCI Machine Learning Repository and place it in the appropriate directory."
+                        "the UCI Machine Learning Repository and place it in the appropriate directory: "
+                        f"{settings.dataset.path_all_datasets / self.config.selected_dataset_value}"
                     )
 
-    if 'results' in st.session_state:
+
+class ResultsTab:
+    """Manages the Results tab content."""
+
+    @staticmethod
+    def render() -> None:
+        """Render the Results tab content."""
+        st.markdown('<div class="sub-header">Simulation Results</div>', unsafe_allow_html=True)
+
+        if 'results' not in st.session_state:
+            return
+
         results = st.session_state.results
 
         # Display metrics
@@ -222,19 +346,24 @@ with tab1:
         first_result = results.outputs[first_nl_key][0]
 
         # Display metrics for proposed methods and benchmarks
-        col1, col2 = st.columns(2)
 
-        with col1:
-            st.markdown("#### Proposed Methods")
-            proposed_metrics = first_result.proposed.metrics
-            st.dataframe(proposed_metrics)
+        st.markdown("#### Proposed Methods")
+        proposed_metrics = first_result.proposed.metrics
+        st.dataframe(proposed_metrics)
 
-        with col2:
-            st.markdown("#### Benchmark Methods")
-            benchmark_metrics = first_result.benchmark.metrics
-            st.dataframe(benchmark_metrics)
+        st.markdown("#### Benchmark Methods")
+        benchmark_metrics = first_result.benchmark.metrics
+        st.dataframe(benchmark_metrics)
 
         # Plot worker strength vs weight relationship
+        ResultsTab._plot_worker_strength_weight_relation(results)
+
+        # Display confidence scores
+        ResultsTab._display_confidence_scores(first_result)
+
+    @staticmethod
+    def _plot_worker_strength_weight_relation(results) -> None:
+        """Plot the worker strength vs weight relationship."""
         st.markdown('<div class="sub-header">Worker Strength vs Weight Relationship</div>', unsafe_allow_html=True)
 
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -254,7 +383,9 @@ with tab1:
 
         st.pyplot(fig)
 
-        # Display confidence scores
+    @staticmethod
+    def _display_confidence_scores(first_result) -> None:
+        """Display confidence scores for the first result."""
         st.markdown('<div class="sub-header">Confidence Scores</div>', unsafe_allow_html=True)
 
         # Get confidence scores for the first result
@@ -262,7 +393,11 @@ with tab1:
 
         # Create tabs for each confidence score method
         if confidence_scores:
-            confidence_tabs = st.tabs(list(confidence_scores.keys()))
+            # Add debug information
+            st.write("Confidence score keys types:", [type(key).__name__ for key in confidence_scores.keys()])
+
+            # Convert keys to strings to avoid StreamlitAPIException
+            confidence_tabs = st.tabs([str(key) for key in confidence_scores.keys()])
 
             for i, (method, scores) in enumerate(confidence_scores.items()):
                 with confidence_tabs[i]:
@@ -285,10 +420,18 @@ with tab1:
 
                     st.pyplot(fig)
 
-with tab2:
-    st.markdown('<div class="sub-header">Worker Analysis</div>', unsafe_allow_html=True)
 
-    if 'results' in st.session_state:
+class WorkerAnalysisTab:
+    """Manages the Worker Analysis tab content."""
+
+    @staticmethod
+    def render() -> None:
+        """Render the Worker Analysis tab content."""
+        st.markdown('<div class="sub-header">Worker Analysis</div>', unsafe_allow_html=True)
+
+        if 'results' not in st.session_state:
+            return
+
         results = st.session_state.results
 
         # Get the first result to display worker information
@@ -296,6 +439,14 @@ with tab2:
         first_result = results.outputs[first_nl_key][0]
 
         # Display worker strength information
+        WorkerAnalysisTab._display_worker_strength(first_result)
+
+        # Display worker weights
+        WorkerAnalysisTab._display_worker_weights(first_result)
+
+    @staticmethod
+    def _display_worker_strength(first_result) -> None:
+        """Display worker strength information."""
         st.markdown("#### Worker Strength")
         worker_strength = first_result.workers_strength
         st.dataframe(worker_strength)
@@ -308,7 +459,9 @@ with tab2:
         ax.set_title("Distribution of Worker Strength")
         st.pyplot(fig)
 
-        # Display worker weights
+    @staticmethod
+    def _display_worker_weights(first_result) -> None:
+        """Display worker weights for different methods."""
         st.markdown("#### Worker Weights")
 
         # Create tabs for different weight methods
@@ -341,74 +494,190 @@ with tab2:
             ax.set_title("SHENG Method Weights")
             st.pyplot(fig)
 
-with tab3:
-    st.markdown('<div class="sub-header">About Crowd-Certain</div>', unsafe_allow_html=True)
 
-    st.markdown("""
-    <div class="info-box">
-    <p>Crowd-Certain is a comprehensive framework for aggregating labels from multiple annotators (crowd workers)
-    while estimating the uncertainty and confidence in the aggregated labels.</p>
+class AboutTab:
+    """Manages the About tab content."""
 
-    <p>The framework implements methods for:</p>
-    <ul>
-        <li>Calculating uncertainties using different techniques (standard deviation, entropy, coefficient of variation, etc.)</li>
-        <li>Converting uncertainties to consistency scores</li>
-        <li>Calculating weights for proposed techniques and benchmark methods</li>
-        <li>Measuring accuracy metrics for different aggregation techniques</li>
-        <li>Simulating worker strengths and noisy labels</li>
-        <li>Generating confidence scores for aggregated labels</li>
-    </ul>
-    </div>
-    """, unsafe_allow_html=True)
+    @staticmethod
+    def render() -> None:
+        """Render the About tab content."""
+        st.markdown('<div class="sub-header">About Crowd-Certain</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="sub-header">Key Features</div>', unsafe_allow_html=True)
-
-    col1, col2 = st.columns(2)
-
-    with col1:
         st.markdown("""
-        #### Uncertainty Techniques
-        - Standard Deviation
-        - Entropy
-        - Coefficient of Variation
-        - Prediction Interval
-        - Confidence Interval
+        <div class="info-box">
+        <p>Crowd-Certain is a comprehensive framework for aggregating labels from multiple annotators (crowd workers)
+        while estimating the uncertainty and confidence in the aggregated labels.</p>
+
+        <p>The framework implements methods for:</p>
+        <ul>
+            <li>Calculating uncertainties using different techniques (standard deviation, entropy, coefficient of variation, etc.)</li>
+            <li>Converting uncertainties to consistency scores</li>
+            <li>Calculating weights for proposed techniques and benchmark methods</li>
+            <li>Measuring accuracy metrics for different aggregation techniques</li>
+            <li>Simulating worker strengths and noisy labels</li>
+            <li>Generating confidence scores for aggregated labels</li>
+        </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+        AboutTab._display_key_features()
+        AboutTab._display_benchmark_methods()
+        AboutTab._display_dataset_structure()
+        AboutTab._display_contact()
+
+    @staticmethod
+    def _display_key_features() -> None:
+        """Display key features of the framework."""
+        st.markdown('<div class="sub-header">Key Features</div>', unsafe_allow_html=True)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("""
+            #### Uncertainty Techniques
+            - Standard Deviation
+            - Entropy
+            - Coefficient of Variation
+            - Prediction Interval
+            - Confidence Interval
+            """)
+
+        with col2:
+            st.markdown("""
+            #### Consistency Techniques
+            - One Minus Uncertainty
+            - One Divided By Uncertainty
+            """)
+
+    @staticmethod
+    def _display_benchmark_methods() -> None:
+        """Display benchmark methods information."""
+        st.markdown('<div class="sub-header">Benchmark Methods</div>', unsafe_allow_html=True)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("""
+            #### Main Benchmarks
+            - Tao
+            - Sheng
+            """)
+
+        with col2:
+            st.markdown("""
+            #### Other Benchmarks
+            - KOS
+            - MACE
+            - MMSR
+            - Wawa
+            - ZeroBasedSkill
+            - MajorityVote
+            - DawidSkene
+            """)
+
+    @staticmethod
+    def _display_dataset_structure() -> None:
+        """Display information about the dataset structure."""
+        st.markdown('<div class="sub-header">Dataset Structure</div>', unsafe_allow_html=True)
+
+        st.markdown("""
+        <div class="info-box">
+        <p>Datasets are stored in a standardized structure:</p>
+        <pre>
+        datasets/
+        ├── ionosphere/
+        │   └── ionosphere.csv
+        ├── chess/
+        │   └── chess.csv
+        ├── mushroom/
+        │   └── mushroom.csv
+        └── ...
+        </pre>
+
+        <p>Each dataset is stored in its own directory with the same name as the dataset.
+        Within each directory, the dataset file is named using the same pattern: <code>{dataset_name}.csv</code>.</p>
+
+        <p>When you run a simulation, the system will:</p>
+        <ol>
+            <li>Look for the dataset in the local cache using the structure above</li>
+            <li>If not found, download it from the UCI Machine Learning Repository</li>
+            <li>Process and save it in the standardized format for future use</li>
+        </ol>
+
+        <p>You can specify a custom dataset path in the Advanced Options section if needed.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    @staticmethod
+    def _display_contact() -> None:
+        """Display contact information."""
+        st.markdown('<div class="sub-header">Contact</div>', unsafe_allow_html=True)
+
+        st.markdown("""
+        <div class="info-box">
+        <p>Artin Majdi - msm2024@gmail.com</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+class CrowdCertainDashboard:
+    """Main dashboard class that orchestrates the entire application."""
+
+    def __init__(self):
+        """Initialize the dashboard."""
+        # Set page configuration
+        st.set_page_config(
+            page_title="Crowd-Certain Dashboard",
+            page_icon="📊",
+            layout="wide",
+            initial_sidebar_state="expanded",
+        )
+
+        # Apply styles
+        DashboardStyles.apply_styles()
+
+        # Initialize components
+        self.sidebar_config = SidebarConfig()
+        self.simulation_runner = SimulationRunner(self.sidebar_config)
+
+    def run(self) -> None:
+        """Run the dashboard application."""
+        # Display header
+        self._display_header()
+
+        # Render sidebar
+        self.sidebar_config.render()
+
+        # Add run button
+        run_simulation = st.sidebar.button("Run Simulation", type="primary")
+
+        # Create tabs
+        tab1, tab2, tab3 = st.tabs(["Simulation Results", "Worker Analysis", "About"])
+
+        # Run simulation if button is clicked
+        if run_simulation:
+            self.simulation_runner.run_simulation()
+
+        # Render tab contents
+        with tab1:
+            ResultsTab.render()
+
+        with tab2:
+            WorkerAnalysisTab.render()
+
+        with tab3:
+            AboutTab.render()
+
+    def _display_header(self) -> None:
+        """Display the dashboard header."""
+        st.markdown('<div class="main-header">Crowd-Certain: Crowd-Sourced Label Aggregation</div>', unsafe_allow_html=True)
+        st.markdown("""
+        Crowd-Certain is a comprehensive framework for aggregating labels from multiple annotators (crowd workers)
+        while estimating the uncertainty and confidence in the aggregated labels.
         """)
 
-    with col2:
-        st.markdown("""
-        #### Consistency Techniques
-        - One Minus Uncertainty
-        - One Divided By Uncertainty
-        """)
 
-    st.markdown('<div class="sub-header">Benchmark Methods</div>', unsafe_allow_html=True)
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown("""
-        #### Main Benchmarks
-        - Tao
-        - Sheng
-        """)
-
-    with col2:
-        st.markdown("""
-        #### Other Benchmarks
-        - KOS
-        - MACE
-        - MMSR
-        - Wawa
-        - ZeroBasedSkill
-        - MajorityVote
-        - DawidSkene
-        """)
-
-    st.markdown('<div class="sub-header">Contact</div>', unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="info-box">
-    <p>Artin Majdi - msm2024@gmail.com</p>
-    </div>
-    """, unsafe_allow_html=True)
+# Entry point for the application
+if __name__ == "__main__":
+    dashboard = CrowdCertainDashboard()
+    dashboard.run()
