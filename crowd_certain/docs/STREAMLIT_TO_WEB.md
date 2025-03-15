@@ -20,12 +20,14 @@
 ## Architecture Comparison
 
 ### Modular Streamlit Architecture
+
 - **Project Structure**: Organized by domain (data, models, utils)
 - **Core Python Codebase**: Business logic in dedicated modules
 - **Dashboard Layer**: Streamlit script that imports core modules
 - **Deployment**: Single-service deployment
 
 ### Web Application Architecture
+
 - **Backend**: Flask/FastAPI exposing core Python modules as API
 - **Frontend**: React/Next.js handling UI and interactions
 - **Core Python Codebase**: Preserved intact, accessed via API
@@ -113,11 +115,13 @@ Create a frontend application that communicates with the API:
 Direct the AI agent to consult these official documentation resources:
 
 ### Backend
+
 - FastAPI: [https://fastapi.tiangolo.com/](https://fastapi.tiangolo.com/)
 - Flask: [https://flask.palletsprojects.com/](https://flask.palletsprojects.com/)
 - Python JSON handling: [https://docs.python.org/3/library/json.html](https://docs.python.org/3/library/json.html)
 
 ### Frontend
+
 - React: [https://react.dev/](https://react.dev/)
 - Next.js: [https://nextjs.org/docs](https://nextjs.org/docs)
 - D3.js: [https://d3js.org/](https://d3js.org/)
@@ -126,11 +130,13 @@ Direct the AI agent to consult these official documentation resources:
 - Tailwind CSS: [https://tailwindcss.com/docs](https://tailwindcss.com/docs)
 
 ### Deployment
+
 - Docker: [https://docs.docker.com/](https://docs.docker.com/)
 - Vercel: [https://vercel.com/docs](https://vercel.com/docs)
 - Railway: [https://docs.railway.app/](https://docs.railway.app/)
 
 ### Testing
+
 - Pytest: [https://docs.pytest.org/](https://docs.pytest.org/)
 - React Testing Library: [https://testing-library.com/docs/react-testing-library/intro/](https://testing-library.com/docs/react-testing-library/intro/)
 

@@ -10,7 +10,7 @@ import pickle
 from datetime import datetime
 
 from crowd_certain.utilities.utils import AIM1_3
-from crowd_certain.utilities.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques, ReadMode
+from crowd_certain.utilities.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques
 from crowd_certain.utilities.settings import Settings, OutputModes
 
 
@@ -30,7 +30,6 @@ def save_results_example():
         dataset=dict(
             dataset_name=DatasetNames.IONOSPHERE,
             datasetNames=[DatasetNames.IONOSPHERE],
-            read_mode=ReadMode.AUTO,
             path_all_datasets=Path("crowd_certain/datasets")
         ),
         simulation=dict(

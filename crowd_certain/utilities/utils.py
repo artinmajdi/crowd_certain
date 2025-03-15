@@ -16,7 +16,7 @@ from scipy.special import bdtrc
 from sklearn import ensemble as sk_ensemble, metrics as sk_metrics
 from crowd_certain.utilities import dataset_loader
 from crowd_certain.utilities import params
-from crowd_certain.utilities.settings import OutputModes, Settings
+from crowd_certain.utilities.settings import Settings
 
 
 class LoadSaveFile:
@@ -1650,7 +1650,7 @@ class AIM1_3:
 
 			return outputs
 
-		if self.config.output.mode is OutputModes.CALCULATE:
+		if self.config.output.mode is params.OutputModes.CALCULATE:
 
 			input_list = [{'nl': nl, 'seed': seed} for nl in self.config.simulation.workers_list for seed in range(self.config.simulation.num_seeds)]
 
@@ -1674,15 +1674,15 @@ class AIM1_3:
 		path_main = self.config.output.path / metric_name / str(self.config.dataset.dataset_name)
 		lsf = LoadSaveFile(path_main / f'{metric_name}.xlsx')
 
-		if self.config.output.mode is OutputModes.CALCULATE:
-			params = {	'seed'           : seed,
+		if self.config.output.mode is params.OutputModes.CALCULATE:
+			params_dict = {	'seed'           : seed,
 						'n_workers'      : n_workers,
 						'config'         : self.config,
 						'data'           : self.data,
 						'feature_columns': self.feature_columns,
 						'use_parallelization_benchmarks':self.config.simulation.use_parallelization}
 
-			df = AIM1_3.core_measurements(**params).workers_strength.set_index('workers_strength').sort_index()
+			df = AIM1_3.core_measurements(**params_dict).workers_strength.set_index('workers_strength').sort_index()
 
 			if self.config.output.save:
 				lsf.dump(df, index=True)

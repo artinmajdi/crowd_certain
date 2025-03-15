@@ -43,14 +43,6 @@ class EnumWithHelpers(enum.Enum):
 # 	return cls
 
 # @members
-class ReadMode(EnumWithHelpers):
-	READ_ARFF = 'read_arff'
-	READ      = 'read'
-	DOWNLOAD  = 'download'
-	AUTO      = 'auto'
-
-
-# @members
 class DatasetNames(EnumWithHelpers):
 	CHESS         = "chess"           # Chess (King-Rook vs. King-Pawn)
 	MUSHROOM      = "mushroom"        # Mushroom

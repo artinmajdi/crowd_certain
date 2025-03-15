@@ -6,7 +6,7 @@ This example demonstrates how to run a simulation on all available datasets.
 
 from pathlib import Path
 from crowd_certain.utilities.utils import AIM1_3
-from crowd_certain.utilities.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques, ReadMode
+from crowd_certain.utilities.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques
 from crowd_certain.utilities.settings import Settings, OutputModes
 
 
@@ -19,7 +19,6 @@ def run_all_datasets_example():
         dataset=dict(
             # Include all available datasets
             datasetNames=list(DatasetNames),
-            read_mode=ReadMode.AUTO,  # Auto-detect the file format
             path_all_datasets=Path("crowd_certain/datasets")  # Path to datasets
         ),
         simulation=dict(
@@ -83,7 +82,6 @@ def run_specific_datasets_example():
                 DatasetNames.CHESS,
                 DatasetNames.MUSHROOM
             ],
-            read_mode=ReadMode.AUTO,  # Auto-detect the file format
             path_all_datasets=Path("crowd_certain/datasets")  # Path to datasets
         ),
         simulation=dict(

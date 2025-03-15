@@ -6,7 +6,7 @@ import pytest
 from pathlib import Path
 
 from crowd_certain.utilities.settings import Settings
-from crowd_certain.utilities.params import DatasetNames, ReadMode
+from crowd_certain.utilities.params import DatasetNames
 from crowd_certain.utilities import dataset_loader
 
 # List of datasets to test, add or remove datasets as needed
@@ -25,7 +25,6 @@ def test_load_specific_dataset(dataset_name):
     config = Settings(
         dataset=dict(
             dataset_name=dataset_name,
-            read_mode=ReadMode.AUTO,
             path_all_datasets=Path('crowd_certain/datasets')
         ),
         simulation=dict(),
@@ -67,7 +66,6 @@ def test_invalid_dataset():
             config = Settings(
                 dataset=dict(
                     dataset_name="NONEXISTENT_DATASET",  # This should cause a validation error
-                    read_mode=ReadMode.AUTO,
                     path_all_datasets=Path('crowd_certain/datasets')
                 ),
                 simulation=dict(),

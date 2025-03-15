@@ -32,6 +32,7 @@ pip install -e .
 ```
 
 The installation scripts will:
+
 - Check if Python is installed (supports both 'python' and 'python3' commands)
 - Verify that Python 3.10+ is available
 - Check if a virtual environment or conda environment already exists
@@ -41,6 +42,7 @@ The installation scripts will:
 - Create an activation script that you can use to easily activate the environment
 
 After installation, activate the environment with:
+
 ```bash
 # On Unix/Linux/macOS:
 source ./crowd_certain/activate_env.sh
@@ -90,6 +92,7 @@ streamlit run crowd_certain/utilities/dashboard.py
 ```
 
 The dashboard allows you to:
+
 - Configure simulation parameters through an intuitive interface
 - Run simulations on different datasets
 - Visualize worker strength and weight relationships
@@ -100,7 +103,7 @@ For more details, see the [Dashboard Documentation](crowd_certain/docs/DASHBOARD
 
 ## Project Structure
 
-```
+```bash
 crowd-certain/
 ├── crowd_certain/       # Main package code
 │   ├── datasets/        # Dataset handling
@@ -129,4 +132,4 @@ This project is licensed under the Apache License 2.0 - see the LICENSE file for
 
 ## Contact
 
-Artin Majdi - msm2024@gmail.com
+Artin Majdi - <msm2024@gmail.com>

@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from crowd_certain.utilities.utils import AIM1_3
-from crowd_certain.utilities.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques, ReadMode
+from crowd_certain.utilities.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques
 from crowd_certain.utilities.settings import Settings, OutputModes
 
 
@@ -23,7 +23,6 @@ def run_with_all_techniques():
         dataset=dict(
             dataset_name=DatasetNames.IONOSPHERE,
             datasetNames=[DatasetNames.IONOSPHERE],
-            read_mode=ReadMode.AUTO,
             path_all_datasets=Path("crowd_certain/datasets")
         ),
         simulation=dict(
@@ -81,7 +80,6 @@ def compare_uncertainty_techniques():
             dataset=dict(
                 dataset_name=DatasetNames.IONOSPHERE,
                 datasetNames=[DatasetNames.IONOSPHERE],
-                read_mode=ReadMode.AUTO,
                 path_all_datasets=Path("crowd_certain/datasets")
             ),
             simulation=dict(
@@ -161,7 +159,6 @@ def compare_consistency_techniques():
             dataset=dict(
                 dataset_name=DatasetNames.IONOSPHERE,
                 datasetNames=[DatasetNames.IONOSPHERE],
-                read_mode=ReadMode.AUTO,
                 path_all_datasets=Path("crowd_certain/datasets")
             ),
             simulation=dict(

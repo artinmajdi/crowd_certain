@@ -6,6 +6,7 @@ This dashboard allows users to run simulations, analyze results, and explore the
 of different crowd-sourced label aggregation techniques.
 """
 
+import json
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -18,9 +19,10 @@ from typing import Dict, List, Any, Optional, Tuple, Union
 
 # Import directly from the utilities module since we're now in the same package
 from crowd_certain.utilities.utils import AIM1_3
-from crowd_certain.utilities.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques, ReadMode
-from crowd_certain.utilities.settings import Settings, OutputModes
+from crowd_certain.utilities import params
+from crowd_certain.utilities.settings import Settings, get_settings
 from crowd_certain.utilities.utils import ResultComparisonsType
+from crowd_certain.utilities.dataset_loader import find_dataset_path
 
 class DashboardStyles:
     """Manages CSS styles for the dashboard."""
@@ -62,218 +64,322 @@ class SidebarConfig:
     """Manages the sidebar configuration options."""
 
     def __init__(self):
-        """Initialize the sidebar configuration."""
-        self.dataset_options = {name.value: name for name in DatasetNames}
-        self.uncertainty_options = {tech.value: tech for tech in UncertaintyTechniques}
-        self.consistency_options = {tech.value: tech for tech in ConsistencyTechniques}
+        """Initialize the sidebar configuration from existing config if available."""
+        # Load existing configuration if available
+        try:
+            self.config = get_settings()
+            print("Loaded existing configuration from config.json")
 
-        # Default values
-        self.selected_dataset_value = "ionosphere"
-        self.n_workers_min = 3
-        self.n_workers_max = 8
-        self.low_quality   = 0.4
-        self.high_quality  = 1.0
-        self.num_seeds     = 3
-        self.selected_uncertainty_values = [UncertaintyTechniques.STD.value]
-        self.selected_consistency_values = [ConsistencyTechniques.ONE_MINUS_UNCERTAINTY.value]
-        self.auto_download = True
-        self.read_mode = ReadMode.AUTO.value
+        except Exception as e:
+            print(f"Could not load existing configuration: {str(e)}. Using default values.")
+            self.config = Settings(
+                dataset=dict(
+                    dataset_name = params.DatasetNames.IONOSPHERE,
+                    datasetNames = [params.DatasetNames.IONOSPHERE],
+                ),
+                simulation=dict(
+                    low_dis   = 0.4,
+                    high_dis  = 1.0,
+                    num_seeds = 3,
+                    n_workers_min_max    = [3, 8],
+                    use_parallelization  = True,
+                    max_parallel_workers = min(4, os.cpu_count() or 4)
+                ),
+                technique=dict(
+                    uncertainty_techniques = [params.UncertaintyTechniques.STD],
+                    consistency_techniques = [params.ConsistencyTechniques.ONE_MINUS_UNCERTAINTY],
+                ),
+                output=dict(
+                    mode=params.OutputModes.CALCULATE,
+                    save=False,
+                )
+            )
 
-        # Get the correct dataset path
-        self.dataset_path = self._get_correct_dataset_path()
+        # Setup options dictionaries
+        self.dataset_options     = {name.value: name for name in params.DatasetNames}
+        self.uncertainty_options = {tech.value: tech for tech in params.UncertaintyTechniques}
+        self.consistency_options = {tech.value: tech for tech in params.ConsistencyTechniques}
 
-    def _get_correct_dataset_path(self) -> Path:
-        """
-        Get the correct dataset path without duplication.
+        # Set initial values from config
+        self.selected_dataset_values = [str(ds) for ds in self.config.dataset.datasetNames]
 
-        Returns:
-            Path object pointing to the datasets directory
-        """
-        # Start with the current file's directory
-        current_dir = Path(__file__).parent.parent
-        datasets_dir = current_dir / "datasets"
+        # Get simulation parameters
+        self.n_workers_min = self.config.simulation.n_workers_min_max[0]
+        self.n_workers_max = self.config.simulation.n_workers_min_max[1]
+        self.low_quality   = self.config.simulation.low_dis
+        self.high_quality  = self.config.simulation.high_dis
+        self.num_seeds     = self.config.simulation.num_seeds
 
-        # Check potential dataset locations
-        potential_paths = [
-            datasets_dir,
-            Path.cwd() / "datasets",
-            Path.cwd() / "crowd_certain" / "datasets"
-        ]
+        # Get parallelization settings
+        self.use_parallelization  = getattr(self.config.simulation, 'use_parallelization', True)
+        self.max_parallel_workers = getattr(self.config.simulation, 'max_parallel_workers', min(4, os.cpu_count() or 4))
 
-        # Return the first existing path
-        for path in potential_paths:
-            if path.exists():
-                # Log if datasets are found
-                dataset_dirs = list(path.glob("*/"))
-                valid_dataset_names = {name.value for name in DatasetNames}
-                valid_dirs = [d for d in dataset_dirs if d.name in valid_dataset_names]
+        # Get technique settings
+        self.selected_uncertainty_values = [tech.value for tech in self.config.technique.uncertainty_techniques]
+        self.selected_consistency_values = [tech.value for tech in self.config.technique.consistency_techniques]
 
-                if valid_dirs:
-                    print(f"Found {len(valid_dirs)} dataset directories in {path}")
-                else:
-                    print(f"No valid dataset directories found in {path}. Will create them as needed.")
+        # Get output settings
+        self.auto_download = True  # Default to True for better user experience
 
-                return path
+        # Get the correct dataset path using the shared function
+        self.dataset_path = find_dataset_path(getattr(self.config.dataset, 'path_all_datasets', Path(__file__).parent.parent / 'datasets'), verbose=True)
 
-        # No existing path found, create and return the default location
-        print(f"Creating datasets directory at: {datasets_dir}")
-        datasets_dir.mkdir(parents=True, exist_ok=True)
-        return datasets_dir
+    def save_config(self, file_path=None):
+        """Save the current configuration to a file."""
+        # Save the config with current UI values
+        config = self.update_config()
+
+        # Determine the file path
+        if file_path is None:
+            file_path = Path.cwd() / "config.json"
+
+        # Save the configuration
+        try:
+            config.save(file_path)
+            return True, f"Configuration saved to {file_path}"
+        except Exception as e:
+            return False, f"Error saving configuration: {str(e)}"
 
     def render(self) -> None:
         """Render the sidebar configuration options."""
+
+        def get_number_of_workers():
+            # Number of workers - now with text input
+            st.sidebar.markdown("##### Number of Workers", help="Minimum and maximum number of workers in the simulation")
+
+            col1, col2 = st.sidebar.columns(2)
+            # Minimum number of workers
+            with col1:
+                self.n_workers_min = st.number_input(
+                    "Minimum",
+                    value=self.n_workers_min,
+                    min_value=3,
+                    max_value=10,
+                    step=1,
+                )
+
+            # Maximum number of workers
+            with col2:
+                self.n_workers_max = st.number_input(
+                    "Maximum",
+                    value=self.n_workers_max,
+                    min_value=self.n_workers_min,
+                    max_value=20,
+                    step=1,
+                )
+
+        def get_worker_quality_range():
+            st.sidebar.markdown("##### Worker Quality Range", help="Minimum and maximum worker quality (0: Miles Morales   .  1: Always Correct)")
+            worker_quality_col1, worker_quality_col2 = st.sidebar.columns(2)
+            with worker_quality_col1:
+                self.low_quality = st.number_input(
+                    "Minimum",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=self.low_quality,
+                    step=0.05,
+                )
+            with worker_quality_col2:
+                self.high_quality = st.number_input(
+                    "Maximum",
+                    min_value=self.low_quality,
+                    max_value=1.0,
+                    value=self.high_quality,
+                    step=0.05,
+                )
+
+        def selecting_datasets():
+            # Dataset selection - now with multi-select
+            self.selected_dataset_values = st.sidebar.multiselect(
+                "Select Datasets",
+                options=list(self.dataset_options.keys()),
+                default=self.selected_dataset_values,
+                help="Choose one or more datasets to run the simulation on"
+            )
+
+
+            # Advanced options
+            with st.sidebar.expander("Advanced Options"):
+                # Dataset options
+                st.markdown("##### Dataset Settings")
+                self.auto_download = st.checkbox(
+                    "Auto-download Datasets",
+                    value=self.auto_download,
+                    help="Automatically download datasets if they are not found locally"
+                )
+
+                # Add option to manually specify dataset path
+                use_custom_path = st.checkbox(
+                    "Use Custom Dataset Path",
+                    value=False,
+                    help="Specify a custom path to the datasets directory"
+                )
+
+                if use_custom_path:
+                    custom_path = st.text_input(
+                        "Custom Dataset Path",
+                        value=str(self.dataset_path),
+                        help="Full path to the directory containing the datasets"
+                    )
+                    if custom_path:
+                        self.dataset_path = Path(custom_path)
+                        st.info(f"Using custom dataset path: {self.dataset_path}")
+
+                        # Check if path exists
+                        if not self.dataset_path.exists():
+                            st.warning(f"Warning: The specified path does not exist. It will be created when needed.")
+                        else:
+                            # List available datasets at this path
+                            available_datasets = [d.name for d in self.dataset_path.iterdir() if d.is_dir()]
+                            if available_datasets:
+                                st.success(f"Found dataset directories: {', '.join(available_datasets)}")
+                            else:
+                                st.warning("No dataset directories found at this path.")
+
+
         st.sidebar.markdown('<div class="sub-header">Configuration</div>', unsafe_allow_html=True)
 
         # Dataset selection
-        self.selected_dataset_value = st.sidebar.selectbox(
-            "Select Dataset",
-            options=list(self.dataset_options.keys()),
-            index=list(self.dataset_options.keys()).index(self.selected_dataset_value),
-            help="Choose a dataset to run the simulation on"
-        )
+        selecting_datasets()
+        st.sidebar.markdown("---")
 
-        # Number of workers
-        self.n_workers_min = st.sidebar.slider(
-            "Minimum Number of Workers",
-            min_value=2,
-            max_value=10,
-            value=self.n_workers_min,
-            help="Minimum number of workers in the simulation"
-        )
 
-        self.n_workers_max = st.sidebar.slider(
-            "Maximum Number of Workers",
-            min_value=self.n_workers_min,
-            max_value=20,
-            value=self.n_workers_max,
-            help="Maximum number of workers in the simulation"
-        )
+        # Number of workers input
+        get_number_of_workers()
+        st.sidebar.markdown("---")
 
-        # Worker quality range
-        worker_quality_col1, worker_quality_col2 = st.sidebar.columns(2)
-        with worker_quality_col1:
-            self.low_quality = st.number_input(
-                "Minimum Worker Quality",
-                min_value=0.0,
-                max_value=1.0,
-                value=self.low_quality,
-                step=0.05,
-                help="Minimum worker quality (0.0 = random guessing, 1.0 = perfect)"
-            )
-        with worker_quality_col2:
-            self.high_quality = st.number_input(
-                "Maximum Worker Quality",
-                min_value=self.low_quality,
-                max_value=1.0,
-                value=self.high_quality,
-                step=0.05,
-                help="Maximum worker quality (0.0 = random guessing, 1.0 = perfect)"
-            )
+        # Worker quality range input
+        get_worker_quality_range()
+        st.sidebar.markdown("---")
 
-        # Uncertainty techniques
-        self.selected_uncertainty_values = st.sidebar.multiselect(
-            "Uncertainty Techniques",
-            options=list(self.uncertainty_options.keys()),
-            default=self.selected_uncertainty_values,
-            help="Techniques to measure uncertainty in worker predictions"
-        )
-
-        # Consistency techniques
-        self.selected_consistency_values = st.sidebar.multiselect(
-            "Consistency Techniques",
-            options=list(self.consistency_options.keys()),
-            default=self.selected_consistency_values,
-            help="Techniques to convert uncertainty to consistency scores"
-        )
-
-        # Number of seeds
-        self.num_seeds = st.sidebar.slider(
+        # Number of seeds input
+        self.num_seeds = st.sidebar.number_input(
             "Number of Random Seeds",
+            value=self.num_seeds,
             min_value=1,
             max_value=10,
-            value=self.num_seeds,
-            help="Number of random seeds to use for the simulation"
+            step=1,
+            help="Number of random seeds to use for the simulation (must be an integer ≥ 1)"
         )
 
+        # Uncertainty techniques selection
+        with st.sidebar.expander("Uncertainty Techniques", expanded=False):
+            # Use list comprehension to create checkboxes and gather selected values
+            self.selected_uncertainty_values = [
+            uncertainty_technique for uncertainty_technique in self.uncertainty_options
+            if st.checkbox(
+                uncertainty_technique,
+                value=uncertainty_technique in self.selected_uncertainty_values,
+                key=f"uncertainty_{uncertainty_technique}"
+            )
+            ]
+
+            # Ensure at least one technique is selected
+            if not self.selected_uncertainty_values:
+                self.selected_uncertainty_values = [params.UncertaintyTechniques.STD.value]
+                st.warning("At least one uncertainty technique must be selected")
+
+
+        # Consistency techniques selection
+        with st.sidebar.expander("Consistency Techniques", expanded=False):
+            # Use list comprehension for consistency techniques
+            self.selected_consistency_values = [
+            consistency_technique for consistency_technique in self.consistency_options
+            if st.checkbox(
+                consistency_technique,
+                value=consistency_technique in self.selected_consistency_values,
+                key=f"consistency_{consistency_technique}"
+            )
+            ]
+
+            # Ensure at least one technique is selected
+            if not self.selected_consistency_values:
+                self.selected_consistency_values = [params.ConsistencyTechniques.ONE_MINUS_UNCERTAINTY.value]
+                st.warning("At least one consistency technique must be selected")
+
         # Advanced options
-        with st.sidebar.expander("Advanced Options"):
-            self.auto_download = st.checkbox(
-                "Auto-download Datasets",
-                value=self.auto_download,
-                help="Automatically download datasets if they are not found locally"
+        with st.sidebar.expander("Parallelization Settings"):
+            self.use_parallelization = st.checkbox(
+                "Enable Parallelization",
+                value=self.use_parallelization,
+                help="Use parallel processing to speed up simulations (recommended for multiple datasets or workers)"
             )
 
-            self.read_mode = st.selectbox(
-                "Read Mode",
-                options=[mode.value for mode in ReadMode],
-                index=[mode.value for mode in ReadMode].index(self.read_mode),
-                help="Method to read datasets"
-            )
-
-            # Add option to manually specify dataset path
-            use_custom_path = st.checkbox(
-                "Use Custom Dataset Path",
-                value=False,
-                help="Specify a custom path to the datasets directory"
-            )
-
-            if use_custom_path:
-                custom_path = st.text_input(
-                    "Custom Dataset Path",
-                    value=str(self.dataset_path),
-                    help="Full path to the directory containing the datasets"
+            if self.use_parallelization:
+                self.max_parallel_workers = st.number_input(
+                    "Maximum Parallel Workers",
+                    min_value=1,
+                    max_value=os.cpu_count() or 4,
+                    value=self.max_parallel_workers,
+                    step=1,
+                    help=f"Maximum number of parallel processes to use (your system has {os.cpu_count() or 'unknown'} CPU cores)"
                 )
-                if custom_path:
-                    self.dataset_path = Path(custom_path)
-                    st.info(f"Using custom dataset path: {self.dataset_path}")
+            else:
+                self.max_parallel_workers = 1
 
-                    # Check if path exists
-                    if not self.dataset_path.exists():
-                        st.warning(f"Warning: The specified path does not exist. It will be created when needed.")
-                    else:
-                        # List available datasets at this path
-                        available_datasets = [d.name for d in self.dataset_path.iterdir() if d.is_dir()]
-                        if available_datasets:
-                            st.success(f"Found dataset directories: {', '.join(available_datasets)}")
-                        else:
-                            st.warning("No dataset directories found at this path.")
+        # Update the config with values from the UI
+        self.update_config()
 
-    def get_selected_dataset(self) -> DatasetNames:
-        """Get the selected dataset as a DatasetNames enum."""
-        return self.dataset_options[self.selected_dataset_value]
+        # Add save configuration button
+        if st.sidebar.button("Save Configuration", type="primary"):
+            success, message = self.save_config()
+            if success:
+                st.sidebar.success(message)
+            else:
+                st.sidebar.error(message)
 
-    def get_selected_uncertainty(self) -> List[UncertaintyTechniques]:
+    def get_selected_datasets(self) -> List[params.DatasetNames]:
+        """Get the selected datasets as DatasetNames enums."""
+        return [self.dataset_options[val] for val in self.selected_dataset_values]
+
+    def get_selected_uncertainty(self) -> List[params.UncertaintyTechniques]:
         """Get the selected uncertainty techniques as UncertaintyTechniques enums."""
         return [self.uncertainty_options[val] for val in self.selected_uncertainty_values]
 
-    def get_selected_consistency(self) -> List[ConsistencyTechniques]:
+    def get_selected_consistency(self) -> List[params.ConsistencyTechniques]:
         """Get the selected consistency techniques as ConsistencyTechniques enums."""
         return [self.consistency_options[val] for val in self.selected_consistency_values]
 
-    def create_config(self) -> Settings:
-        """Create a Settings object from the current configuration."""
-        return Settings(
-            dataset=dict(
-                dataset_name      = self.get_selected_dataset(),
-                datasetNames      = [self.get_selected_dataset()],
-                read_mode         = ReadMode(self.read_mode),
-                path_all_datasets = self.dataset_path
-            ),
-            simulation=dict(
-                n_workers_min_max = [self.n_workers_min, self.n_workers_max],
-                low_dis           = self.low_quality,
-                high_dis          = self.high_quality,
-                num_seeds         = self.num_seeds,
-            ),
-            technique=dict(
-                uncertainty_techniques = self.get_selected_uncertainty(),
-                consistency_techniques = self.get_selected_consistency(),
-            ),
-            output=dict(
-                mode = OutputModes.CALCULATE,
-                save = False,
-            )
-        )
+    def update_config(self) -> Settings:
+        """Update the existing config with values from the UI and return it."""
+        # Update dataset settings
+        self.config.dataset.dataset_name      = self.get_selected_datasets()[0]  # Use first dataset as primary
+        self.config.dataset.datasetNames      = self.get_selected_datasets()     # All selected datasets
+        self.config.dataset.path_all_datasets = self.dataset_path
+
+        # Update simulation settings
+        self.config.simulation.n_workers_min_max    = [self.n_workers_min, self.n_workers_max]
+        self.config.simulation.low_dis              = self.low_quality
+        self.config.simulation.high_dis             = self.high_quality
+        self.config.simulation.num_seeds            = self.num_seeds
+        self.config.simulation.use_parallelization  = self.use_parallelization
+        self.config.simulation.max_parallel_workers = self.max_parallel_workers
+
+        # Update technique settings
+        self.config.technique.uncertainty_techniques = self.get_selected_uncertainty()
+        self.config.technique.consistency_techniques = self.get_selected_consistency()
+
+        # Update output settings
+        self.config.output.mode = params.OutputModes.CALCULATE
+        self.config.output.save = False  # Don't save results by default in the dashboard
+
+        return self.config
+
+    # def save_config(self, file_path=None):
+    #     """Save the current configuration to a file."""
+    #     # Update the config with current UI values
+    #     config = self.update_config()
+
+    #     # Determine the file path
+    #     if file_path is None:
+    #         file_path = Path.cwd() / "config.json"
+
+    #     # Save the configuration
+    #     try:
+    #         config.save(file_path)
+    #         return True, f"Configuration saved to {file_path}"
+    #     except Exception as e:
+    #         return False, f"Error saving configuration: {str(e)}"
 
 
 class SimulationRunner:
@@ -284,46 +390,77 @@ class SimulationRunner:
         self.config = config
 
     def run_simulation(self) -> None:
-        """Run the simulation with the current configuration."""
-        with st.spinner("Running simulation..."):
-            # Create configuration
-            settings = self.config.create_config()
+        """Run the simulation with the current configuration for all selected datasets."""
+        # Check if any datasets are selected
+        if not self.config.selected_dataset_values:
+            st.error("Please select at least one dataset to run the simulation.")
+            return
 
-            # Check if dataset exists and show appropriate message
-            dataset_dir = settings.dataset.path_all_datasets / self.config.selected_dataset_value
-            dataset_file = dataset_dir / f"{self.config.selected_dataset_value}.csv"
+        # Initialize results dictionary in session state if it doesn't exist
+        if 'results_by_dataset' not in st.session_state:
+            st.session_state.results_by_dataset = {}
 
-            # Display dataset path information (can be removed in production)
-            st.info(f"Looking for dataset at: {dataset_file}")
-            st.info(f"Dataset base directory: {settings.dataset.path_all_datasets}")
+        # Create base configuration
+        settings = self.config.update_config()
 
-            if not dataset_file.exists():
+        # Track overall progress
+        progress_bar = st.progress(0)
+        total_datasets = len(self.config.selected_dataset_values)
 
-                if self.config.auto_download:
-                    st.info(f"Dataset {self.config.selected_dataset_value} not found locally. Will attempt to download...")
+        # Run simulation for each selected dataset
+        for i, dataset_value in enumerate(self.config.selected_dataset_values):
+            dataset_name = self.config.dataset_options[dataset_value]
 
-                else:
-                    st.warning(f"Dataset {self.config.selected_dataset_value} not found locally and auto-download is disabled. The simulation may fail.")
+            with st.spinner(f"Running simulation for dataset: {dataset_value} ({i+1}/{total_datasets})..."):
+                # Update settings for this specific dataset
+                settings.dataset.dataset_name = dataset_name
 
-            # Run the simulation
-            try:
-                results: ResultComparisonsType = AIM1_3.calculate_one_dataset(config=settings)
-                st.session_state.results = results
-                st.success(f"Simulation completed successfully for {self.config.selected_dataset_value} dataset!")
+                # Check if dataset exists and show appropriate message
+                dataset_dir = settings.dataset.path_all_datasets / dataset_value
+                dataset_file = dataset_dir / f"{dataset_value}.csv"
 
-            except Exception as e:
-                st.error(f"Error running simulation: {str(e)}")
-                st.exception(e)
+                # Display dataset path information
+                st.info(f"Looking for dataset at: {dataset_file}")
 
-                # Provide helpful message for common errors
-                error_str = str(e)
-                if "Could not load dataset" in error_str:
-                    st.warning(
-                        "The dataset could not be found or downloaded. Please check your internet connection "
-                        "and try again. If the problem persists, you can manually download the dataset from "
-                        "the UCI Machine Learning Repository and place it in the appropriate directory: "
-                        f"{settings.dataset.path_all_datasets / self.config.selected_dataset_value}"
-                    )
+                if not dataset_file.exists():
+                    if self.config.auto_download:
+                        st.info(f"Dataset {dataset_value} not found locally. Will attempt to download...")
+                    else:
+                        st.warning(f"Dataset {dataset_value} not found locally and auto-download is disabled. The simulation may fail.")
+
+                # Run the simulation for this dataset
+                try:
+                    results: ResultComparisonsType = AIM1_3.calculate_one_dataset(config=settings, dataset_name=dataset_name)
+
+                    # Store results for this dataset
+                    st.session_state.results_by_dataset[dataset_value] = results
+
+                    st.success(f"Simulation completed successfully for {dataset_value} dataset!")
+
+                except Exception as e:
+                    st.error(f"Error running simulation for {dataset_value}: {str(e)}")
+                    st.exception(e)
+
+                    # Provide helpful message for common errors
+                    error_str = str(e)
+                    if "Could not load dataset" in error_str:
+                        st.warning(
+                            "The dataset could not be found or downloaded. Please check your internet connection "
+                            "and try again. If the problem persists, you can manually download the dataset from "
+                            "the UCI Machine Learning Repository and place it in the appropriate directory: "
+                            f"{settings.dataset.path_all_datasets / dataset_value}"
+                        )
+
+            # Update progress bar
+            progress_bar.progress((i + 1) / total_datasets)
+
+        # Set the last dataset as the current result for backward compatibility
+        if self.config.selected_dataset_values and self.config.selected_dataset_values[-1] in st.session_state.results_by_dataset:
+            st.session_state.results = st.session_state.results_by_dataset[self.config.selected_dataset_values[-1]]
+
+        # Final success message
+        if len(self.config.selected_dataset_values) > 1:
+            st.success(f"Completed simulations for {len(self.config.selected_dataset_values)} datasets!")
 
 
 class ResultsTab:
@@ -334,33 +471,44 @@ class ResultsTab:
         """Render the Results tab content."""
         st.markdown('<div class="sub-header">Simulation Results</div>', unsafe_allow_html=True)
 
-        if 'results' not in st.session_state:
+        # Check if any results are available
+        if 'results_by_dataset' not in st.session_state or not st.session_state.results_by_dataset:
+            st.info("No simulation results available. Please run a simulation first.")
             return
 
-        results: ResultComparisonsType = st.session_state.results
+        # Get available datasets
+        available_datasets = list(st.session_state.results_by_dataset.keys())
 
-        # Display metrics
-        st.markdown('<div class="sub-header">Performance Metrics</div>', unsafe_allow_html=True)
+        # Create tabs for each dataset
+        dataset_tabs = st.tabs(available_datasets)
 
-        # Get the first result to display metrics
-        first_nl_key = list(results.outputs.keys())[0]
-        first_result = results.outputs[first_nl_key][0]
+        # Display results for each dataset in its respective tab
+        for i, dataset_name in enumerate(available_datasets):
+            with dataset_tabs[i]:
+                # Get the results for this dataset
+                results = st.session_state.results_by_dataset[dataset_name]
 
-        # Display metrics for proposed methods and benchmarks
+                # Display metrics
+                st.markdown('<div class="sub-header">Performance Metrics</div>', unsafe_allow_html=True)
 
-        st.markdown("#### Proposed Methods")
-        proposed_metrics = first_result.proposed.metrics
-        st.dataframe(proposed_metrics)
+                # Get the first result to display metrics
+                first_nl_key = list(results.outputs.keys())[0]
+                first_result = results.outputs[first_nl_key][0]
 
-        st.markdown("#### Benchmark Methods")
-        benchmark_metrics = first_result.benchmark.metrics
-        st.dataframe(benchmark_metrics)
+                # Display metrics for proposed methods and benchmarks
+                st.markdown("#### Proposed Methods")
+                proposed_metrics = first_result.proposed.metrics
+                st.dataframe(proposed_metrics)
 
-        # Plot worker strength vs weight relationship
-        ResultsTab._plot_worker_strength_weight_relation(results)
+                st.markdown("#### Benchmark Methods")
+                benchmark_metrics = first_result.benchmark.metrics
+                st.dataframe(benchmark_metrics)
 
-        # Display confidence scores
-        ResultsTab._display_confidence_scores(first_result)
+                # Plot worker strength vs weight relationship
+                ResultsTab._plot_worker_strength_weight_relation(results)
+
+                # Display confidence scores
+                ResultsTab._display_confidence_scores(first_result)
 
     @staticmethod
     def _plot_worker_strength_weight_relation(results) -> None:
@@ -430,20 +578,32 @@ class WorkerAnalysisTab:
         """Render the Worker Analysis tab content."""
         st.markdown('<div class="sub-header">Worker Analysis</div>', unsafe_allow_html=True)
 
-        if 'results' not in st.session_state:
+        # Check if any results are available
+        if 'results_by_dataset' not in st.session_state or not st.session_state.results_by_dataset:
+            st.info("No simulation results available. Please run a simulation first.")
             return
 
-        results = st.session_state.results
+        # Get available datasets
+        available_datasets = list(st.session_state.results_by_dataset.keys())
 
-        # Get the first result to display worker information
-        first_nl_key = list(results.outputs.keys())[0]
-        first_result = results.outputs[first_nl_key][0]
+        # Create tabs for each dataset
+        dataset_tabs = st.tabs(available_datasets)
 
-        # Display worker strength information
-        WorkerAnalysisTab._display_worker_strength(first_result)
+        # Display worker analysis for each dataset in its respective tab
+        for i, dataset_name in enumerate(available_datasets):
+            with dataset_tabs[i]:
+                # Get the results for this dataset
+                results = st.session_state.results_by_dataset[dataset_name]
 
-        # Display worker weights
-        WorkerAnalysisTab._display_worker_weights(first_result)
+                # Get the first result to display worker information
+                first_nl_key = list(results.outputs.keys())[0]
+                first_result = results.outputs[first_nl_key][0]
+
+                # Display worker strength information
+                WorkerAnalysisTab._display_worker_strength(first_result)
+
+                # Display worker weights
+                WorkerAnalysisTab._display_worker_weights(first_result)
 
     @staticmethod
     def _display_worker_strength(first_result) -> None:

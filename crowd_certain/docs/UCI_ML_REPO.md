@@ -1,80 +1,90 @@
 # `ucimlrepo` package
+
 Package to easily import datasets from the UC Irvine Machine Learning Repository into scripts and notebooks.
 <br>
 **Current Version: 0.0.7**
 
 ## Installation
+
 In a Jupyter notebook, install with the command
 
-    !pip3 install -U ucimlrepo
+ !pip3 install -U ucimlrepo
 
 Restart the kernel and import the module `ucimlrepo`.
 
 ## Example Usage
 
-    from ucimlrepo import fetch_ucirepo, list_available_datasets
+```python
+from ucimlrepo import fetch_ucirepo, list_available_datasets
 
-	# check which datasets can be imported
-	list_available_datasets()
+# check which datasets can be imported
+list_available_datasets()
 
-    # import dataset
-    heart_disease = fetch_ucirepo(id=45)
-    # alternatively: fetch_ucirepo(name='Heart Disease')
+# import dataset
+heart_disease = fetch_ucirepo(id=45)
+# alternatively: fetch_ucirepo(name='Heart Disease')
 
-    # access data
-    X = heart_disease.data.features
-    y = heart_disease.data.targets
-    # train model e.g. sklearn.linear_model.LinearRegression().fit(X, y)
+# access data
+X = heart_disease.data.features
+y = heart_disease.data.targets
+# train model e.g. sklearn.linear_model.LinearRegression().fit(X, y)
 
-    # access metadata
-    print(heart_disease.metadata.uci_id)
-    print(heart_disease.metadata.num_instances)
-    print(heart_disease.metadata.additional_info.summary)
+# access metadata
+print(heart_disease.metadata.uci_id)
+print(heart_disease.metadata.num_instances)
+print(heart_disease.metadata.additional_info.summary)
 
-    # access variable info in tabular format
-    print(heart_disease.variables)
-
-
+# access variable info in tabular format
+print(heart_disease.variables)
+```
 
 ## `fetch_ucirepo`
+
 Loads a dataset from the UCI ML Repository, including the dataframes and metadata information.
 
 ### Parameters
+
 Provide either a dataset ID or name as keyword (named) arguments. Cannot accept both.
+
 - **`id`**: Dataset ID for UCI ML Repository
 - **`name`**: Dataset name, or substring of name
 
 ### Returns
-- **`dataset`**
-	- **`data`**: Contains dataset matrices as **pandas** dataframes
-		- `ids`: Dataframe of ID columns
-		- `features`: Dataframe of feature columns
-		- `targets`: Dataframe of target columns
-		- `original`: Dataframe consisting of all IDs, features, and targets
-		- `headers`: List of all variable names/headers
-	- **`metadata`**: Contains metadata information about the dataset
-		- See Metadata section below for details
-	- **`variables`**: Contains variable details presented in a tabular/dataframe format
-		- `name`: Variable name
-		- `role`: Whether the variable is an ID, feature, or target
-		- `type`: Data type e.g. categorical, integer, continuous
-		- `demographic`: Indicates whether the variable represents demographic data
-		- `description`: Short description of variable
-		- `units`: variable units for non-categorical data
-		- `missing_values`: Whether there are missing values in the variable's column
 
+- **`dataset`**
+  - **`data`**: Contains dataset matrices as **pandas** dataframes
+    - `ids`: Dataframe of ID columns
+    - `features`: Dataframe of feature columns
+    - `targets`: Dataframe of target columns
+    - `original`: Dataframe consisting of all IDs, features, and targets
+    - `headers`: List of all variable names/headers
+  - **`metadata`**: Contains metadata information about the dataset
+    - See Metadata section below for details
+  - **`variables`**: Contains variable details presented in a tabular/dataframe format
+    - `name`: Variable name
+    - `role`: Whether the variable is an ID, feature, or target
+    - `type`: Data type e.g. categorical, integer, continuous
+    - `demographic`: Indicates whether the variable represents demographic data
+    - `description`: Short description of variable
+    - `units`: variable units for non-categorical data
+    - `missing_values`: Whether there are missing values in the variable's column
 
 ## `list_available_datasets`
+
 Prints a list of datasets that can be imported via `fetch_ucirepo`
+
 ### Parameters
+
 - **`filter`**: Optional keyword argument to filter available datasets based on a category
-	- Valid filters: `aim-ahead`
+  - Valid filters: `aim-ahead`
 - **`search`**: Optional keyword argument to search datasets whose name contains the search query
+
 ### Returns
+
 none
 
-
 ## Metadata
+
 - `uci_id`: Unique dataset identifier for UCI repository
 - `name`
 - `abstract`: Short description of dataset
@@ -95,19 +105,19 @@ none
 - `repository_url`: Link to dataset webpage on the UCI repository
 - `data_url`: Link to raw data file
 - `additional_info`: Descriptive free text about dataset
-	- `summary`: General summary
-	- `purpose`: For what purpose was the dataset created?
-	- `funding`: Who funded the creation of the dataset?
-	- `instances_represent`: What do the instances in this dataset represent?
-	- `recommended_data_splits`: Are there recommended data splits?
-	- `sensitive_data`: Does the dataset contain data that might be considered sensitive in any way?
-	- `preprocessing_description`: Was there any data preprocessing performed?
-	- `variable_info`: Additional free text description for variables
-	- `citation`: Citation Requests/Acknowledgements
- - `external_url`: URL to external dataset page. This field will only exist for linked datasets i.e. not hosted by UCI
-
+  - `summary`: General summary
+  - `purpose`: For what purpose was the dataset created?
+  - `funding`: Who funded the creation of the dataset?
+  - `instances_represent`: What do the instances in this dataset represent?
+  - `recommended_data_splits`: Are there recommended data splits?
+  - `sensitive_data`: Does the dataset contain data that might be considered sensitive in any way?
+  - `preprocessing_description`: Was there any data preprocessing performed?
+  - `variable_info`: Additional free text description for variables
+  - `citation`: Citation Requests/Acknowledgements
+- `external_url`: URL to external dataset page. This field will only exist for linked datasets i.e. not hosted by UCI
 
 ## Links
+
 - [UCI Machine Learning Repository home page](https://archive.ics.uci.edu/)
 - [PyPi repository for this package](https://pypi.org/project/ucimlrepo)
 - [Submit an issue](https://github.com/uci-ml-repo/ucimlrepo-feedback/issues)

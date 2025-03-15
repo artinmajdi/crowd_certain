@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 
 from crowd_certain.utilities.settings import Settings
-from crowd_certain.utilities.params import DatasetNames, ReadMode
+from crowd_certain.utilities.params import DatasetNames
 
 def test_settings_initialization():
     """Test the initialization of the Settings class with different parameters."""
@@ -16,18 +16,15 @@ def test_settings_initialization():
     config = Settings(
         dataset=dict(
             dataset_name=DatasetNames.IONOSPHERE,
-            read_mode=ReadMode.AUTO,
         ),
-        simulation=dict(random_seed=42),
-        technique=dict(name="test_technique"),
-        output=dict(save_results=True)
+        simulation=dict(num_seeds=42),  # Using num_seeds instead of random_seed
+        technique=dict(),
+        output=dict(save=True)  # Using save instead of save_results
     )
 
     assert config.dataset.dataset_name == DatasetNames.IONOSPHERE
-    assert config.dataset.read_mode == ReadMode.AUTO
-    assert config.simulation.random_seed == 42
-    assert config.technique.name == "test_technique"
-    assert config.output.save_results is True
+    assert config.simulation.num_seeds == 42
+    assert config.output.save is True
 
 def test_settings_with_dict():
     """Test creating Settings from a dictionary."""
@@ -35,18 +32,16 @@ def test_settings_with_dict():
     config = Settings(
         dataset=dict(
             dataset_name=DatasetNames.IONOSPHERE,
-            read_mode=ReadMode.AUTO,
             path_all_datasets=Path('crowd_certain/datasets')
         ),
-        simulation=dict(random_seed=123),
-        technique=dict(name="test_technique"),
-        output=dict(save_results=True)
+        simulation=dict(num_simulations=123),  # Using num_simulations which exists in SimulationSettings
+        technique=dict(),
+        output=dict(save=True)
     )
 
     assert config.dataset.dataset_name == DatasetNames.IONOSPHERE
-    assert config.dataset.read_mode == ReadMode.AUTO
     assert isinstance(config.dataset.path_all_datasets, Path)
-    assert config.simulation.random_seed == 123
+    assert config.simulation.num_simulations == 123
 
 def test_settings_with_json_config():
     """Test creating Settings with config values that could come from a JSON file."""
@@ -55,17 +50,16 @@ def test_settings_with_json_config():
     config = Settings(
         dataset=dict(
             dataset_name=DatasetNames.IONOSPHERE,
-            read_mode=ReadMode.AUTO,
             path_all_datasets=str(Path('crowd_certain/datasets'))
         ),
-        simulation=dict(random_seed=456),
-        technique=dict(name="test_technique"),
-        output=dict(save_results=False)
+        simulation=dict(n_workers_min_max=[2, 5]),  # Using n_workers_min_max which exists
+        technique=dict(),
+        output=dict(save=False)
     )
 
     assert config.dataset.dataset_name == DatasetNames.IONOSPHERE
-    assert config.simulation.random_seed == 456
-    assert config.output.save_results is False
+    assert config.simulation.n_workers_min_max == [2, 5]
+    assert config.output.save is False
 
 if __name__ == "__main__":
     test_settings_initialization()

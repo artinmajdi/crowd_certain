@@ -46,13 +46,12 @@ The simulation examples demonstrate how to configure and run simulations using t
 
 ```python
 from crowd_certain.utilities.utils import AIM1_3
-from crowd_certain.utilities.params import DatasetNames, ReadMode
+from crowd_certain.utilities.params import DatasetNames
 from crowd_certain.utilities.settings import Settings
 
 # Create configuration
 config = Settings()
 config.dataset.dataset_name = DatasetNames.IONOSPHERE
-config.dataset.read_mode = ReadMode.AUTO
 
 # Run simulation
 results = AIM1_3.calculate_one_dataset(config=config)

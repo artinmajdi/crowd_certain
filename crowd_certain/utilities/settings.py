@@ -9,31 +9,30 @@ from pydantic import BaseModel, confloat, conint, Field
 from pydantic.functional_validators import field_validator
 import sklearn
 
-from crowd_certain.utilities.params import ConsistencyTechniques, DataModes, DatasetNames, OutputModes, ReadMode, SimulationMethods,UncertaintyTechniques
+from crowd_certain.utilities import params
 
 PathNoneType: TypeAlias = Union[pathlib.Path, None]
 
 
 class DatasetSettings(BaseModel):
-	data_mode         : DataModes          = DataModes.TRAIN
+	data_mode         : params.DataModes          = params.DataModes.TRAIN
 	path_all_datasets : pathlib.Path       = pathlib.Path('datasets')
-	dataset_name      : DatasetNames       = DatasetNames.CHESS
-	datasetNames      : list[DatasetNames] = Field(default=None)
+	dataset_name      : params.DatasetNames       = params.DatasetNames.CHESS
+	datasetNames      : list[params.DatasetNames] = Field(default=None)
 	non_null_samples  : bool               = True
 	random_state      : int                = 0
-	read_mode         : ReadMode           = ReadMode.READ_ARFF
 	shuffle           : bool               = False
 	main_url          : str                = "https://archive.ics.uci.edu/ml/machine-learning-databases/"
 	train_test_ratio  : Annotated[float,Field(strict=True, ge=0.0, le=1.0)] = 0.7
 	augmentation_count: Annotated[int,  Field(strict=True, ge=0)] 			= 1
 
 	@field_validator('datasetNames', mode='before')
-	def check_dataset_names(cls, v: Union[list[DatasetNames], str]):
+	def check_dataset_names(cls, v: Union[list[params.DatasetNames], str]):
 		if isinstance(v, str):
 			if v.lower() == 'all':
-				return list(DatasetNames)
+				return list(params.DatasetNames)
 			else:
-				return [DatasetNames(v.lower())]
+				return [params.DatasetNames(v.lower())]
 		return v
 
 
@@ -47,7 +46,7 @@ class DatasetSettings(BaseModel):
 # @add_path_validator
 class OutputSettings(BaseModel):
 	path: pathlib.Path = pathlib.Path('outputs')
-	mode: OutputModes = OutputModes.CALCULATE
+	mode: params.OutputModes = params.OutputModes.CALCULATE
 	save: bool = False
 
 	@field_validator('path', mode='after')
@@ -56,25 +55,25 @@ class OutputSettings(BaseModel):
 
 
 class TechniqueSettings(BaseModel):
-	uncertainty_techniques: list[UncertaintyTechniques] = [UncertaintyTechniques.STD]
-	consistency_techniques: list[ConsistencyTechniques] = [ConsistencyTechniques.ONE_MINUS_UNCERTAINTY]
+	uncertainty_techniques: list[params.UncertaintyTechniques] = [params.UncertaintyTechniques.STD]
+	consistency_techniques: list[params.ConsistencyTechniques] = [params.ConsistencyTechniques.ONE_MINUS_UNCERTAINTY]
 
 	@field_validator('uncertainty_techniques', mode='before')
-	def check_uncertainty_techniques(cls, v: Union[list[UncertaintyTechniques], str]):
+	def check_uncertainty_techniques(cls, v: Union[list[params.UncertaintyTechniques], str]):
 		if isinstance(v, str):
 			if v.lower() == 'all':
-				return list(UncertaintyTechniques)
+				return list(params.UncertaintyTechniques)
 			else:
-				return [UncertaintyTechniques(v.lower())]
+				return [params.UncertaintyTechniques(v.lower())]
 		return v
 
 	@field_validator('consistency_techniques', mode='before')
-	def check_consistency_techniques(cls, v: Union[list[ConsistencyTechniques], str]):
+	def check_consistency_techniques(cls, v: Union[list[params.ConsistencyTechniques], str]):
 		if isinstance(v, str):
 			if v.lower() == 'all':
-				return list(ConsistencyTechniques)
+				return list(params.ConsistencyTechniques)
 			else:
-				return [ConsistencyTechniques(v.lower())]
+				return [params.ConsistencyTechniques(v.lower())]
 		return v
 
 
@@ -86,7 +85,7 @@ class SimulationSettings(BaseModel):
 	num_seeds           : int       = 3
 	use_parallelization: bool       = True
 	max_parallel_workers: int = 10
-	simulation_methods: SimulationMethods = SimulationMethods.RANDOM_STATES
+	simulation_methods: params.SimulationMethods = params.SimulationMethods.RANDOM_STATES
 
 	@property
 	def workers_list(self):
@@ -106,6 +105,7 @@ class SimulationSettings(BaseModel):
 
 
 class Settings(BaseModel):
+	"""Main settings class that contains all configuration settings for the application."""
 
 	dataset   : DatasetSettings
 	simulation: SimulationSettings
@@ -117,68 +117,196 @@ class Settings(BaseModel):
 		case_sensitive       = False
 		str_strip_whitespace = True
 
+	def save(self, file_path: Union[str, pathlib.Path]) -> None:
+		"""
+		Save the current configuration to a JSON file.
 
-def get_settings(argv=None, jupyter=True) -> 'Settings':
+		Args:
+			file_path: Path where the configuration will be saved
 
+		Raises:
+			IOError: If the file cannot be written
+		"""
+		# Convert to a dictionary
+		config_dict = self.model_dump()
+
+		# Convert Path objects to strings and handle enums
+		def convert_values(d):
+			for k, v in d.items():
+				if isinstance(v, dict):
+					convert_values(v)
+				elif isinstance(v, pathlib.Path):
+					d[k] = str(v)
+				elif isinstance(v, list) and v and hasattr(v[0], 'value'):
+					# Handle list of enums
+					d[k] = [str(item) for item in v]
+				elif hasattr(v, 'value'):
+					# Handle enum values
+					d[k] = str(v)
+
+		convert_values(config_dict)
+
+		# Ensure the directory exists
+		file_path = pathlib.Path(file_path)
+		file_path.parent.mkdir(parents=True, exist_ok=True)
+
+		# Write the file
+		with open(file_path, 'w') as f:
+			json.dump(config_dict, f, indent=4)
+
+
+def get_settings(argv=None, jupyter=True, debug=False) -> Settings:
+	"""
+	Get application settings from command line arguments and/or config file.
+
+	Args:
+		argv: Command line arguments (optional)
+		jupyter: Whether the function is being called from a Jupyter notebook
+		debug: Whether to print debug information
+
+	Returns:
+		Settings object with all configuration parameters
+
+	Raises:
+		FileNotFoundError: If the config file is not found
+	"""
 	def parse_args() -> dict:
-		"""	Getting the arguments from the command line
-			Problem:	Jupyter Notebook automatically passes some command-line arguments to the kernel.
-						When we run argparse.ArgumentParser.parse_args(), it tries to parse those arguments, which are not recognized by your argument parser.
-			Solution:	To avoid this issue, you can modify your get_args() function to accept an optional list of command-line arguments, instead of always using sys.argv.
-						When this list is provided, the function will parse the arguments from it instead of the command-line arguments. """
+		"""
+		Parse command line arguments, handling Jupyter notebook special cases.
 
-		# If argv is not provided, use sys.argv[1: ] to skip the script name
+		Returns:
+			Dictionary of parsed arguments
+		"""
+		# If argv is not provided, use sys.argv[1:] to skip the script name
+		# For Jupyter notebooks, use an empty list to avoid parsing Jupyter's arguments
 		args = [] if jupyter else (argv or sys.argv[1:])
 
-		# Initializing the parser
+		# Print the arguments for debugging
+		if args and debug:
+			print(f"Command line arguments: {args}")
+
+		# Initialize the parser
 		parser = argparse.ArgumentParser()
 		parser.add_argument('--config', type=str, help='Path to config file')
 
-		# Filter out any arguments starting with '-f'
+		# Filter out Jupyter-specific arguments
 		filtered_argv = [arg for arg in args if not (arg.startswith('-f') or 'jupyter/runtime' in arg.lower())]
 
-		# Parsing the arguments
+		# Parse the arguments
 		parsed_args = parser.parse_args(args=filtered_argv)
 
-		return {k: v for k, v in vars(parsed_args).items() if v is not None}
+		# Return only non-None values
+		result = {k: v for k, v in vars(parsed_args).items() if v is not None}
+
+		# Print the parsed arguments for debugging
+		if result and debug:
+			print(f"Parsed arguments: {result}")
+
+		return result
+
+	def find_config_file() -> pathlib.Path:
+		"""
+		Find the config.json file in the project.
+
+		Returns:
+			Path to the config.json file
+
+		Raises:
+			FileNotFoundError: If no config file is found
+		"""
+		# Check multiple possible locations for the config file
+		possible_locations = [
+			# Current directory
+			pathlib.Path.cwd() / 'config.json',
+			# Main project directory (crowd_certain)
+			pathlib.Path(__file__).parents[1] / 'config.json',
+			# Utilities directory
+			pathlib.Path(__file__).parent / 'config.json',
+			# One level up from current directory
+			pathlib.Path.cwd().parent / 'config.json',
+			# Two levels up from current directory
+			pathlib.Path.cwd().parent.parent / 'config.json',
+		]
+
+		# Check each location and print debug info
+		for location in possible_locations:
+			if location.exists():
+				if debug:
+					print(f"Found config file at: {location}")
+				return location
+			elif debug:
+				print(f"Config file not found at: {location}")
+
+		# If no config file is found, use the default location
+		default_location = pathlib.Path(__file__).parents[1] / 'config.json'
+		if debug:
+			print(f"No config file found. Using default location: {default_location}")
+		return default_location
 
 	def get_config(args_dict: dict[str, Any]) -> Settings:
+		"""
+		Load and update configuration from file and command line arguments.
 
-		# Loading the config.json file
+		Args:
+			args_dict: Dictionary of command line arguments
+
+		Returns:
+			Settings object with all configuration parameters
+
+		Raises:
+			FileNotFoundError: If the config file is not found
+			ValueError: If the config file contains invalid JSON
+		"""
+		# Load the config.json file
 		if args_dict.get('config') is not None:
-			config_dir = pathlib.Path(args_dict.get('config'))
+			config_path = pathlib.Path(args_dict.get('config'))
 		else:
-			config_dir = pathlib.Path(__file__).parent.parent / 'config.json'
+			config_path = find_config_file()
 
-		if not config_dir.exists():
-			raise FileNotFoundError(f'Config file not found at {config_dir}')
+		if not config_path.exists():
+			raise FileNotFoundError(f'Config file not found at {config_path}')
 
-		with open(config_dir) as f:
-			config_data = json.load(f)
+		if debug:
+			print(f"Loading configuration from: {config_path}")
 
-		# Updating the config with the arguments as command line input
-		def  update_config(model, config_key):
-			for key in model.__fields__:
+		try:
+			with open(config_path) as f:
+				config_data = json.load(f)
+		except json.JSONDecodeError as e:
+			raise ValueError(f"Invalid JSON in config file {config_path}: {e}")
+		except Exception as e:
+			raise IOError(f"Error reading config file {config_path}: {e}")
+
+		# Validate the config data structure
+		required_sections = ['dataset', 'simulation', 'technique', 'output']
+		missing_sections = [section for section in required_sections if section not in config_data]
+		if missing_sections:
+			raise ValueError(f"Config file is missing required sections: {', '.join(missing_sections)}")
+
+		# Update the config with command line arguments
+		def update_config(model_class, config_key):
+			"""Update config data with command line arguments for a specific section."""
+			if config_key not in config_data:
+				config_data[config_key] = {}
+
+			for key in model_class.__annotations__:
 				if key in args_dict:
 					config_data[config_key][key] = args_dict[key]
 
-		# Updating the config with the arguments as command line input
+		# Update each section of the config
 		update_config(DatasetSettings    , 'dataset')
 		update_config(SimulationSettings , 'simulation')
 		update_config(TechniqueSettings  , 'technique')
 		update_config(OutputSettings     , 'output')
 
-		# Convert the dictionary to a Namespace
-		config = Settings(**config_data)
+		# Create the Settings object
+		try:
+			return Settings(**config_data)
+		except Exception as e:
+			raise ValueError(f"Error creating Settings object from config file {config_path}: {e}")
 
-		# # Updating the paths to their absolute path
-		# PATH_BASE = pathlib.Path(__file__).parent.parent.parent.parent
-		# args.DEFAULT_FINDING_FOLDER_NAME = f'{args.datasetName}-{args.modelName}'
-
-		return config
-
-	# Updating the config file
-	return  get_config(args_dict=parse_args())
+	# Get and return the configuration
+	return get_config(args_dict=parse_args())
 
 
 def main():

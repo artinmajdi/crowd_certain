@@ -5,7 +5,7 @@ Configuration file for pytest containing shared fixtures.
 import pytest
 from pathlib import Path
 from crowd_certain.utilities.settings import Settings
-from crowd_certain.utilities.params import DatasetNames, ReadMode
+from crowd_certain.utilities.params import DatasetNames
 
 @pytest.fixture
 def base_config():
@@ -13,7 +13,6 @@ def base_config():
     return Settings(
         dataset=dict(
             dataset_name=DatasetNames.IONOSPHERE,
-            read_mode=ReadMode.AUTO,
             path_all_datasets=Path('crowd_certain/datasets')
         ),
         simulation=dict(random_seed=42),
