@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crowd-Certain: Crowd-Sourced Label Aggregation</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Plotly.js for visualizations -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 sidebar">
+                <div class="sidebar-header">
+                    <h3>Configuration</h3>
+                </div>
+
+                <div class="sidebar-content">
+                    <form id="simulation-form">
+                        <!-- Dataset Selection -->
+                        <div class="form-group mb-4">
+                            <label for="dataset-select">Select Datasets</label>
+                            <select id="dataset-select" class="form-select" multiple>
+                                {% for dataset in datasets %}
+                                <option value="{{ dataset }}">{{ dataset }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Hold Ctrl/Cmd to select multiple datasets</div>
+                        </div>
+
+                        <hr>
+
+                        <!-- Number of Workers -->
+                        <div class="form-group mb-3">
+                            <label>Number of Workers</label>
+                            <div class="row">
+                                <div class="col-6">
+                                    <label for="workers-min">Minimum</label>
+                                    <input type="number" id="workers-min" class="form-control" value="3" min="3" max="10">
+                                </div>
+                                <div class="col-6">
+                                    <label for="workers-max">Maximum</label>
+                                    <input type="number" id="workers-max" class="form-control" value="8" min="3" max="20">
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <!-- Worker Quality Range -->
+                        <div class="form-group mb-3">
+                            <label>Worker Quality Range</label>
+                            <div class="form-text mb-2">(0: Low Quality, 1: Always Correct)</div>
+                            <div class="row">
+                                <div class="col-6">
+                                    <label for="quality-min">Minimum</label>
+                                    <input type="number" id="quality-min" class="form-control" value="0.4" min="0" max="1" step="0.05">
+                                </div>
+                                <div class="col-6">
+                                    <label for="quality-max">Maximum</label>
+                                    <input type="number" id="quality-max" class="form-control" value="1.0" min="0" max="1" step="0.05">
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <!-- Number of Seeds -->
+                        <div class="form-group mb-3">
+                            <label for="seeds">Number of Random Seeds</label>
+                            <input type="number" id="seeds" class="form-control" value="1" min="1" max="10">
+                            <div class="form-text">Higher values give more robust results but take longer</div>
+                        </div>
+
+                        <hr>
+
+                        <!-- Uncertainty Techniques -->
+                        <div class="form-group mb-3">
+                            <label>Uncertainty Techniques</label>
+                            <div class="techniques-container">
+                                {% for technique in uncertainty_techniques %}
+                                <div class="form-check">
+                                    <input class="form-check-input uncertainty-technique" type="checkbox"
+                                           value="{{ technique.value }}" id="uncertainty-{{ technique.value }}"
+                                           {% if technique.value == 'standard_deviation' %}checked{% endif %}>
+                                    <label class="form-check-label" for="uncertainty-{{ technique.value }}">
+                                        {{ technique.name }}
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <!-- Consistency Techniques -->
+                        <div class="form-group mb-3">
+                            <label>Consistency Techniques</label>
+                            <div class="techniques-container">
+                                {% for technique in consistency_techniques %}
+                                <div class="form-check">
+                                    <input class="form-check-input consistency-technique" type="checkbox"
+                                           value="{{ technique.value }}" id="consistency-{{ technique.value }}"
+                                           {% if technique.value == 'one_minus_uncertainty' %}checked{% endif %}>
+                                    <label class="form-check-label" for="consistency-{{ technique.value }}">
+                                        {{ technique.name }}
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <!-- Parallelization Settings -->
+                        <div class="form-group mb-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="use-parallelization">
+                                <label class="form-check-label" for="use-parallelization">Enable Parallelization</label>
+                            </div>
+                            <div id="parallelization-settings" style="display: none; margin-top: 10px;">
+                                <label for="max-parallel-workers">Maximum Parallel Workers</label>
+                                <input type="number" id="max-parallel-workers" class="form-control" value="1" min="1" max="8">
+                            </div>
+                        </div>
+
+                        <button type="submit" id="run-simulation" class="btn btn-primary w-100 mt-3">
+                            Run Simulation
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="col-md-9 main-content">
+                <div class="header">
+                    <h1>Crowd-Certain: Crowd-Sourced Label Aggregation</h1>
+                    <p class="lead">
+                        A comprehensive framework for aggregating labels from multiple annotators (crowd workers)
+                        while estimating the uncertainty and confidence in the aggregated labels.
+                    </p>
+                </div>
+
+                <!-- Loading indicator -->
+                <div id="loading" style="display: none;">
+                    <div class="d-flex justify-content-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                    <p class="text-center mt-2">Running simulation, please wait...</p>
+                </div>
+
+                <!-- Results container -->
+                <div id="results-container" style="display: none;">
+                    <ul class="nav nav-tabs" id="results-tabs" role="tablist">
+                        <!-- Dataset tabs will be generated dynamically -->
+                    </ul>
+
+                    <div class="tab-content mt-3" id="results-content">
+                        <!-- Dataset content will be generated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Initial state - info section -->
+                <div id="info-section">
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5>About Crowd-Certain</h5>
+                        </div>
+                        <div class="card-body">
+                            <p>
+                                Crowd-Certain is a comprehensive framework for aggregating labels from multiple annotators (crowd workers)
+                                while estimating the uncertainty and confidence in the aggregated labels.
+                            </p>
+                            <p>The framework implements methods for:</p>
+                            <ul>
+                                <li>Calculating uncertainties using different techniques (standard deviation, entropy, coefficient of variation, etc.)</li>
+                                <li>Converting uncertainties to consistency scores</li>
+                                <li>Calculating weights for proposed techniques and benchmark methods</li>
+                                <li>Measuring accuracy metrics for different aggregation techniques</li>
+                                <li>Simulating worker strengths and noisy labels</li>
+                                <li>Generating confidence scores for aggregated labels</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card mb-4">
+                                <div class="card-header">
+                                    <h5>Key Features</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <h6>Uncertainty Techniques</h6>
+                                            <ul>
+                                                <li>Standard Deviation</li>
+                                                <li>Entropy</li>
+                                                <li>Coefficient of Variation</li>
+                                                <li>Prediction Interval</li>
+                                                <li>Confidence Interval</li>
+                                            </ul>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <h6>Consistency Techniques</h6>
+                                            <ul>
+                                                <li>One Minus Uncertainty</li>
+                                                <li>One Divided By Uncertainty</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="card mb-4">
+                                <div class="card-header">
+                                    <h5>Benchmark Methods</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <h6>Main Benchmarks</h6>
+                                            <ul>
+                                                <li>Tao</li>
+                                                <li>Sheng</li>
+                                            </ul>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <h6>Other Benchmarks</h6>
+                                            <ul>
+                                                <li>KOS</li>
+                                                <li>MACE</li>
+                                                <li>MMSR</li>
+                                                <li>Wawa</li>
+                                                <li>ZeroBasedSkill</li>
+                                                <li>MajorityVote</li>
+                                                <li>DawidSkene</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Bundle (Bootstrap, jQuery) -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Custom JavaScript -->
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

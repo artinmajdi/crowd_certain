@@ -11,6 +11,7 @@
 		"debug.console.fontSize": 16,
 		"notebook.output.fontSize": 14,
 		"notebook.output.lineHeight": 0,
-		"hide-files.files": []
+		"hide-files.files": [],
+		"liveServer.settings.multiRootWorkspaceName": "crowd"
 	}
 }

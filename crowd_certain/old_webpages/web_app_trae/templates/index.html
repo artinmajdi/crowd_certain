@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crowd-Certain Dashboard</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">Crowd-Certain</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="https://github.com/your-repo/crowd-certain" target="_blank">GitHub</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#helpModal">Help</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="card mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h2 class="card-title">Crowd-Certain Dashboard</h2>
+                        <p class="card-subtitle">Explore crowd-sourced label aggregation techniques</p>
+                    </div>
+                    <div class="card-body">
+                        <p class="lead">
+                            This dashboard allows you to run simulations, analyze results, and explore the performance of different crowd-sourced label aggregation techniques.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Configuration Panel -->
+            <div class="col-md-4">
+                <div class="card mb-4">
+                    <div class="card-header bg-secondary text-white">
+                        <h3 class="card-title h5">Simulation Configuration</h3>
+                    </div>
+                    <div class="card-body">
+                        <form id="simulationForm">
+                            <!-- Datasets -->
+                            <div class="mb-3">
+                                <label for="datasets" class="form-label">Datasets</label>
+                                <select class="form-select" id="datasets" multiple required>
+                                    {% for dataset in datasets %}
+                                    <option value="{{ dataset }}">{{ dataset }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text">Hold Ctrl/Cmd to select multiple datasets</div>
+                            </div>
+
+                            <!-- Worker Configuration -->
+                            <div class="mb-3">
+                                <label class="form-label">Number of Workers</label>
+                                <div class="row">
+                                    <div class="col-6">
+                                        <label for="workersMin" class="form-label">Min</label>
+                                        <input type="number" class="form-control" id="workersMin" value="3" min="3" max="10">
+                                    </div>
+                                    <div class="col-6">
+                                        <label for="workersMax" class="form-label">Max</label>
+                                        <input type="number" class="form-control" id="workersMax" value="8" min="3" max="20">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Worker Quality -->
+                            <div class="mb-3">
+                                <label class="form-label">Worker Quality Range</label>
+                                <div class="row">
+                                    <div class="col-6">
+                                        <label for="qualityMin" class="form-label">Min</label>
+                                        <input type="number" class="form-control" id="qualityMin" value="0.4" min="0.1" max="1.0" step="0.1">
+                                    </div>
+                                    <div class="col-6">
+                                        <label for="qualityMax" class="form-label">Max</label>
+                                        <input type="number" class="form-control" id="qualityMax" value="1.0" min="0.1" max="1.0" step="0.1">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Seeds -->
+                            <div class="mb-3">
+                                <label for="seeds" class="form-label">Number of Seeds</label>
+                                <input type="number" class="form-control" id="seeds" value="1" min="1" max="10">
+                                <div class="form-text">Higher values give more stable results but take longer</div>
+                            </div>
+
+                            <!-- Uncertainty Techniques -->
+                            <div class="mb-3">
+                                <label for="uncertaintyTechniques" class="form-label">Uncertainty Techniques</label>
+                                <select class="form-select" id="uncertaintyTechniques" multiple>
+                                    {% for technique in uncertainty_techniques %}
+                                    <option value="{{ technique.value }}" {% if technique.value == 'standard_deviation' %}selected{% endif %}>{{ technique.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <!-- Consistency Techniques -->
+                            <div class="mb-3">
+                                <label for="consistencyTechniques" class="form-label">Consistency Techniques</label>
+                                <select class="form-select" id="consistencyTechniques" multiple>
+                                    {% for technique in consistency_techniques %}
+                                    <option value="{{ technique.value }}" {% if technique.value == 'one_minus_uncertainty' %}selected{% endif %}>{{ technique.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <!-- Parallelization -->
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="useParallelization">
+                                <label class="form-check-label" for="useParallelization">Use Parallelization</label>
+                            </div>
+
+                            <div class="mb-3" id="parallelizationOptions" style="display: none;">
+                                <label for="maxParallelWorkers" class="form-label">Max Parallel Workers</label>
+                                <input type="number" class="form-control" id="maxParallelWorkers" value="2" min="1" max="8">
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100">Run Simulation</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Panel -->
+            <div class="col-md-8">
+                <div class="card mb-4">
+                    <div class="card-header bg-success text-white">
+                        <h3 class="card-title h5">Simulation Results</h3>
+                    </div>
+                    <div class="card-body">
+                        <div id="loadingIndicator" class="text-center py-5" style="display: none;">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Running simulation... This may take a few moments.</p>
+                        </div>
+
+                        <div id="resultsContainer" style="display: none;">
+                            <!-- Tabs for different result views -->
+                            <ul class="nav nav-tabs" id="resultTabs" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active" id="metrics-tab" data-bs-toggle="tab" data-bs-target="#metrics" type="button" role="tab">Performance Metrics</button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="weight-strength-tab" data-bs-toggle="tab" data-bs-target="#weightStrength" type="button" role="tab">Weight-Strength Relation</button>
+                                </li>
+                            </ul>
+
+                            <!-- Tab content -->
+                            <div class="tab-content mt-3" id="resultTabsContent">
+                                <!-- Metrics Tab -->
+                                <div class="tab-pane fade show active" id="metrics" role="tabpanel">
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <h4>Dataset: <span id="currentDataset"></span></h4>
+                                            <div class="btn-group mb-3" id="datasetSelector"></div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <h5>Proposed Methods</h5>
+                                            <div id="proposedMetricsTable" class="table-responsive"></div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <h5>Benchmark Methods</h5>
+                                            <div id="benchmarkMetricsTable" class="table-responsive"></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Weight-Strength Relation Tab -->
+                                <div class="tab-pane fade" id="weightStrength" role="tabpanel">
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <h4>Dataset: <span id="wsCurrentDataset"></span></h4>
+                                            <div class="btn-group mb-3" id="wsDatasetSelector"></div>
+                                        </div>
+                                    </div>
+                                    <div id="weightStrengthPlot" style="height: 400px;"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="noResultsMessage" class="text-center py-5">
+                            <p class="text-muted">Configure and run a simulation to see results here.</p>
+                        </div>
+
+                        <div id="errorMessage" class="alert alert-danger" style="display: none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div class="modal fade" id="helpModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">Crowd-Certain Help</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <h4>About Crowd-Certain</h4>
+                    <p>
+                        Crowd-Certain is a framework for evaluating and comparing different crowd-sourced label aggregation techniques.
+                        It focuses on understanding the relationship between worker quality and the weights assigned by different aggregation methods.
+                    </p>
+
+                    <h4>How to Use This Dashboard</h4>
+                    <ol>
+                        <li><strong>Select Datasets</strong>: Choose one or more datasets to run simulations on.</li>
+                        <li><strong>Configure Workers</strong>: Set the minimum and maximum number of workers and their quality range.</li>
+                        <li><strong>Choose Techniques</strong>: Select uncertainty and consistency techniques to evaluate.</li>
+                        <li><strong>Run Simulation</strong>: Click the "Run Simulation" button to start the simulation.</li>
+                        <li><strong>Explore Results</strong>: View performance metrics and weight-strength relationships in the results panel.</li>
+                    </ol>
+
+                    <h4>Understanding the Results</h4>
+                    <p>
+                        <strong>Performance Metrics</strong>: Shows accuracy, F1 score, and other metrics for both proposed and benchmark methods.
+                    </p>
+                    <p>
+                        <strong>Weight-Strength Relation</strong>: Visualizes how worker quality (strength) correlates with the weights assigned by different aggregation methods.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Custom JS -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
