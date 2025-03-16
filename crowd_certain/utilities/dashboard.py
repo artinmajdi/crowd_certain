@@ -390,8 +390,10 @@ class SidebarConfig:
     def update_config(self) -> Settings:
         """Update the existing config with values from the UI and return it."""
         # Update dataset settings
-        self.config.dataset.dataset_name      = self.get_selected_datasets()[0]  # Use first dataset as primary
-        self.config.dataset.datasetNames      = self.get_selected_datasets()     # All selected datasets
+        if self.get_selected_datasets():
+            self.config.dataset.dataset_name      = self.get_selected_datasets()[0]  # Use first dataset as primary
+            self.config.dataset.datasetNames      = self.get_selected_datasets()     # All selected datasets
+
         self.config.dataset.path_all_datasets = self.dataset_path
 
         # Update simulation settings
