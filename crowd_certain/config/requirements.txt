@@ -45,3 +45,6 @@ watchdog>=6.0.0
 
 # Parallel processing
 openpyxl>=3.1.2
+
+# Add h5py for HDF5 storage
+h5py>=3.7.0
