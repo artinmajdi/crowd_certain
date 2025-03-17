@@ -1,3 +1,7 @@
+import h5py
+from pathlib import Path
+import pickle
+import json
 import functools
 import multiprocessing
 import pickle
@@ -72,6 +76,532 @@ class LoadSaveFile:
 
 		elif self.path.suffix == '.xlsx':
 			file.to_excel(self.path, index=index)
+
+
+# Add this class after the LoadSaveFile class
+class ExperimentHDF5Storage:
+    """HDF5-based storage solution for experiment results."""
+
+    def __init__(self, file_path):
+        """Initialize the HDF5 storage with a file path."""
+        self.file_path = Path(file_path)
+        self.file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _serialize_dataframe(self, df):
+        """Convert a DataFrame to a dictionary suitable for HDF5 storage."""
+        data_dict = {
+            'values': df.values,
+            'index': df.index.values,
+            'columns': df.columns.values,
+            'index_name': df.index.name,
+            'dtypes': {col: str(df[col].dtype) for col in df.columns}
+        }
+
+        # Handle MultiIndex for columns if present
+        if isinstance(df.columns, pd.MultiIndex):
+            data_dict['columns_names'] = df.columns.names
+            data_dict['columns_values'] = [level.values for level in df.columns.levels]
+            data_dict['columns_codes'] = df.columns.codes
+            data_dict['is_multi_columns'] = True
+        else:
+            data_dict['is_multi_columns'] = False
+
+        # Handle MultiIndex for index if present
+        if isinstance(df.index, pd.MultiIndex):
+            data_dict['index_names'] = df.index.names
+            data_dict['index_values'] = [level.values for level in df.index.levels]
+            data_dict['index_codes'] = df.index.codes
+            data_dict['is_multi_index'] = True
+        else:
+            data_dict['is_multi_index'] = False
+
+        return data_dict
+
+    def _deserialize_dataframe(self, data_dict):
+        """Reconstruct a DataFrame from a dictionary."""
+        # Handle MultiIndex for columns if present
+        if data_dict.get('is_multi_columns', False):
+            columns = pd.MultiIndex(
+                levels=data_dict['columns_values'],
+                codes=data_dict['columns_codes'],
+                names=data_dict['columns_names']
+            )
+        else:
+            columns = data_dict['columns']
+
+        # Handle MultiIndex for index if present
+        if data_dict.get('is_multi_index', False):
+            index = pd.MultiIndex(
+                levels=data_dict['index_values'],
+                codes=data_dict['index_codes'],
+                names=data_dict['index_names']
+            )
+        else:
+            index = pd.Index(data_dict['index'], name=data_dict.get('index_name'))
+
+        # Create the DataFrame
+        df = pd.DataFrame(data_dict['values'], index=index, columns=columns)
+
+        # Convert dtypes
+        for col, dtype_str in data_dict.get('dtypes', {}).items():
+            if col in df.columns:
+                try:
+                    df[col] = df[col].astype(dtype_str)
+                except:
+                    pass  # Keep original dtype if conversion fails
+
+        return df
+
+    def _store_dataframe(self, group, name, df):
+        """Store a DataFrame in an HDF5 group."""
+        data_dict = self._serialize_dataframe(df)
+
+        # Create a subgroup for this DataFrame
+        df_group = group.create_group(name)
+
+        # Store values as dataset
+        df_group.create_dataset('values', data=data_dict['values'])
+
+        # Store index
+        df_group.create_dataset('index', data=data_dict['index'])
+        if data_dict.get('index_name'):
+            df_group.attrs['index_name'] = data_dict['index_name']
+
+        # Store columns
+        df_group.create_dataset('columns', data=data_dict['columns'])
+
+        # Store MultiIndex information if needed
+        df_group.attrs['is_multi_columns'] = data_dict['is_multi_columns']
+        if data_dict['is_multi_columns']:
+            cols_group = df_group.create_group('columns_multi')
+            for i, level_values in enumerate(data_dict['columns_values']):
+                cols_group.create_dataset(f'level_{i}_values', data=level_values)
+            for i, level_codes in enumerate(data_dict['columns_codes']):
+                cols_group.create_dataset(f'level_{i}_codes', data=level_codes)
+            cols_group.attrs['names'] = json.dumps(data_dict['columns_names'])
+
+        # Store MultiIndex information for index if needed
+        df_group.attrs['is_multi_index'] = data_dict['is_multi_index']
+        if data_dict['is_multi_index']:
+            idx_group = df_group.create_group('index_multi')
+            for i, level_values in enumerate(data_dict['index_values']):
+                idx_group.create_dataset(f'level_{i}_values', data=level_values)
+            for i, level_codes in enumerate(data_dict['index_codes']):
+                idx_group.create_dataset(f'level_{i}_codes', data=level_codes)
+            idx_group.attrs['names'] = json.dumps(data_dict['index_names'])
+
+        # Store dtypes
+        df_group.attrs['dtypes'] = json.dumps({k: v for k, v in data_dict['dtypes'].items()})
+
+    def _load_dataframe(self, group):
+        """Load a DataFrame from an HDF5 group."""
+        data_dict = {}
+
+        # Load values
+        data_dict['values'] = group['values'][:]
+
+        # Load index
+        data_dict['index'] = group['index'][:]
+        data_dict['index_name'] = group.attrs.get('index_name', None)
+
+        # Load columns
+        data_dict['columns'] = group['columns'][:]
+
+        # Load MultiIndex information if needed
+        data_dict['is_multi_columns'] = group.attrs['is_multi_columns']
+        if data_dict['is_multi_columns']:
+            cols_group = group['columns_multi']
+            data_dict['columns_values'] = []
+            data_dict['columns_codes'] = []
+
+            i = 0
+            while f'level_{i}_values' in cols_group:
+                data_dict['columns_values'].append(cols_group[f'level_{i}_values'][:])
+                data_dict['columns_codes'].append(cols_group[f'level_{i}_codes'][:])
+                i += 1
+
+            data_dict['columns_names'] = json.loads(cols_group.attrs['names'])
+
+        # Load MultiIndex information for index if needed
+        data_dict['is_multi_index'] = group.attrs['is_multi_index']
+        if data_dict['is_multi_index']:
+            idx_group = group['index_multi']
+            data_dict['index_values'] = []
+            data_dict['index_codes'] = []
+
+            i = 0
+            while f'level_{i}_values' in idx_group:
+                data_dict['index_values'].append(idx_group[f'level_{i}_values'][:])
+                data_dict['index_codes'].append(idx_group[f'level_{i}_codes'][:])
+                i += 1
+
+            data_dict['index_names'] = json.loads(idx_group.attrs['names'])
+
+        # Load dtypes
+        if 'dtypes' in group.attrs:
+            data_dict['dtypes'] = json.loads(group.attrs['dtypes'])
+
+        return self._deserialize_dataframe(data_dict)
+
+    def _store_dict_of_dataframes(self, group, name, dict_of_dfs):
+        """Store a dictionary of DataFrames in an HDF5 group."""
+        dict_group = group.create_group(name)
+
+        for key, df in dict_of_dfs.items():
+            # Convert key to string and replace problematic characters
+            safe_key = str(key).replace('/', '_').replace('\\', '_')
+            self._store_dataframe(dict_group, safe_key, df)
+
+        # Store the original keys mapping
+        dict_group.attrs['keys_mapping'] = json.dumps({str(key).replace('/', '_').replace('\\', '_'): str(key) for key in dict_of_dfs.keys()})
+
+    def _load_dict_of_dataframes(self, group):
+        """Load a dictionary of DataFrames from an HDF5 group."""
+        result = {}
+
+        # Get the original keys mapping
+        keys_mapping = json.loads(group.attrs.get('keys_mapping', '{}'))
+        reverse_mapping = {v: k for k, v in keys_mapping.items()}
+
+        for key in group.keys():
+            if isinstance(group[key], h5py.Group):
+                df = self._load_dataframe(group[key])
+
+                # Use the original key if available
+                original_key = reverse_mapping.get(key, key)
+                result[original_key] = df
+
+        return result
+
+    def _store_config(self, group, config):
+        """Store configuration object in HDF5 group."""
+        # Serialize the config to bytes
+        config_bytes = pickle.dumps(config)
+        group.create_dataset('config_pickle', data=np.void(config_bytes))
+
+        # Also store a JSON-compatible version of the config if possible
+        try:
+            config_dict = config.__dict__
+            group.attrs['config_json'] = json.dumps(str(config_dict))
+        except:
+            pass
+
+    def _load_config(self, group):
+        """Load configuration object from HDF5 group."""
+        if 'config_pickle' in group:
+            config_bytes = group['config_pickle'][()]
+            return pickle.loads(config_bytes)
+        return None
+
+    def save_experiment_results(self, dataset_name, results, config):
+        """Save experiment results to HDF5 file."""
+        with h5py.File(self.file_path, 'a') as f:
+            # Create a group for this dataset if it doesn't exist
+            if dataset_name not in f:
+                dataset_group = f.create_group(dataset_name)
+            else:
+                dataset_group = f[dataset_name]
+
+            # Store the configuration
+            self._store_config(dataset_group, config)
+
+            # Store weight-strength relation
+            if hasattr(results, 'weight_strength_relation'):
+                self._store_dataframe(dataset_group, 'weight_strength_relation', results.weight_strength_relation)
+
+            # Create outputs group
+            if 'outputs' not in dataset_group:
+                outputs_group = dataset_group.create_group('outputs')
+            else:
+                # If outputs group already exists, create a new version
+                # Delete the old group first
+                del dataset_group['outputs']
+                outputs_group = dataset_group.create_group('outputs')
+
+            # Store each worker's results
+            for worker_key, seed_results in results.outputs.items():
+                worker_group = outputs_group.create_group(worker_key)
+
+                # Store each seed's results
+                for seed_idx, seed_result in enumerate(seed_results):
+                    if seed_result is None or (isinstance(seed_result, float) and np.isnan(seed_result)):
+                        continue
+
+                    seed_group = worker_group.create_group(f'seed_{seed_idx}')
+
+                    # Store proposed results
+                    if hasattr(seed_result, 'proposed'):
+                        proposed_group = seed_group.create_group('proposed')
+
+                        # Store confidence scores
+                        if hasattr(seed_result.proposed, 'confidence_scores'):
+                            self._store_dict_of_dataframes(proposed_group, 'confidence_scores', seed_result.proposed.confidence_scores)
+
+                        # Store aggregated labels
+                        if hasattr(seed_result.proposed, 'aggregated_labels'):
+                            self._store_dataframe(proposed_group, 'aggregated_labels', seed_result.proposed.aggregated_labels)
+
+                        # Store metrics
+                        if hasattr(seed_result.proposed, 'metrics'):
+                            self._store_dataframe(proposed_group, 'metrics', seed_result.proposed.metrics)
+
+                    # Store benchmark results
+                    if hasattr(seed_result, 'benchmark'):
+                        benchmark_group = seed_group.create_group('benchmark')
+
+                        # Store confidence scores
+                        if hasattr(seed_result.benchmark, 'confidence_scores'):
+                            self._store_dict_of_dataframes(benchmark_group, 'confidence_scores', seed_result.benchmark.confidence_scores)
+
+                        # Store aggregated labels
+                        if hasattr(seed_result.benchmark, 'aggregated_labels'):
+                            self._store_dataframe(benchmark_group, 'aggregated_labels', seed_result.benchmark.aggregated_labels)
+
+                        # Store metrics
+                        if hasattr(seed_result.benchmark, 'metrics'):
+                            self._store_dataframe(benchmark_group, 'metrics', seed_result.benchmark.metrics)
+
+                    # Store weights
+                    if hasattr(seed_result, 'weight'):
+                        weight_group = seed_group.create_group('weight')
+
+                        if hasattr(seed_result.weight, 'PROPOSED'):
+                            self._store_dataframe(weight_group, 'PROPOSED', seed_result.weight.PROPOSED)
+
+                        if hasattr(seed_result.weight, 'TAO'):
+                            self._store_dataframe(weight_group, 'TAO', seed_result.weight.TAO)
+
+                        if hasattr(seed_result.weight, 'SHENG'):
+                            self._store_dataframe(weight_group, 'SHENG', seed_result.weight.SHENG)
+
+                    # Store worker strength
+                    if hasattr(seed_result, 'workers_strength'):
+                        self._store_dataframe(seed_group, 'workers_strength', seed_result.workers_strength)
+
+                    # Store true labels
+                    if hasattr(seed_result, 'true_label'):
+                        true_label_group = seed_group.create_group('true_label')
+
+                        if 'train' in seed_result.true_label:
+                            self._store_dataframe(true_label_group, 'train', seed_result.true_label['train'])
+
+                        if 'test' in seed_result.true_label:
+                            self._store_dataframe(true_label_group, 'test', seed_result.true_label['test'])
+
+                    # Store n_workers as attribute
+                    if hasattr(seed_result, 'n_workers'):
+                        seed_group.attrs['n_workers'] = seed_result.n_workers
+
+    def load_experiment_results(self, dataset_name):
+        """Load experiment results for a dataset."""
+        with h5py.File(self.file_path, 'r') as f:
+            if dataset_name not in f:
+                raise KeyError(f"Dataset '{dataset_name}' not found in HDF5 file")
+
+            dataset_group = f[dataset_name]
+
+            # Load config
+            config = self._load_config(dataset_group)
+
+            # Create results object
+            class ResultsObject:
+                pass
+
+            results = ResultsObject()
+
+            # Load weight-strength relation
+            if 'weight_strength_relation' in dataset_group:
+                results.weight_strength_relation = self._load_dataframe(dataset_group['weight_strength_relation'])
+
+            # Load outputs
+            if 'outputs' in dataset_group:
+                outputs = {}
+                outputs_group = dataset_group['outputs']
+
+                for worker_key in outputs_group.keys():
+                    worker_group = outputs_group[worker_key]
+                    worker_results = []
+
+                    # Find max seed index
+                    max_seed_idx = -1
+                    for key in worker_group.keys():
+                        if key.startswith('seed_'):
+                            try:
+                                seed_idx = int(key.split('_')[1])
+                                max_seed_idx = max(max_seed_idx, seed_idx)
+                            except:
+                                pass
+
+                    # Initialize results list with NaNs
+                    worker_results = [np.nan] * (max_seed_idx + 1)
+
+                    # Load each seed's results
+                    for key in worker_group.keys():
+                        if key.startswith('seed_'):
+                            try:
+                                seed_idx = int(key.split('_')[1])
+                                seed_group = worker_group[key]
+
+                                # Create seed result object
+                                class SeedResult:
+                                    pass
+
+                                seed_result = SeedResult()
+
+                                # Load n_workers
+                                if 'n_workers' in seed_group.attrs:
+                                    seed_result.n_workers = seed_group.attrs['n_workers']
+
+                                # Load proposed results
+                                if 'proposed' in seed_group:
+                                    class ProposedResult:
+                                        pass
+
+                                    proposed = ProposedResult()
+                                    proposed_group = seed_group['proposed']
+
+                                    if 'confidence_scores' in proposed_group:
+                                        proposed.confidence_scores = self._load_dict_of_dataframes(proposed_group['confidence_scores'])
+
+                                    if 'aggregated_labels' in proposed_group:
+                                        proposed.aggregated_labels = self._load_dataframe(proposed_group['aggregated_labels'])
+
+                                    if 'metrics' in proposed_group:
+                                        proposed.metrics = self._load_dataframe(proposed_group['metrics'])
+
+                                    seed_result.proposed = proposed
+
+                                # Load benchmark results
+                                if 'benchmark' in seed_group:
+                                    class BenchmarkResult:
+                                        pass
+
+                                    benchmark = BenchmarkResult()
+                                    benchmark_group = seed_group['benchmark']
+
+                                    if 'confidence_scores' in benchmark_group:
+                                        benchmark.confidence_scores = self._load_dict_of_dataframes(benchmark_group['confidence_scores'])
+
+                                    if 'aggregated_labels' in benchmark_group:
+                                        benchmark.aggregated_labels = self._load_dataframe(benchmark_group['aggregated_labels'])
+
+                                    if 'metrics' in benchmark_group:
+                                        benchmark.metrics = self._load_dataframe(benchmark_group['metrics'])
+
+                                    seed_result.benchmark = benchmark
+
+                                # Load weights
+                                if 'weight' in seed_group:
+                                    class WeightType:
+                                        pass
+
+                                    weight = WeightType()
+                                    weight_group = seed_group['weight']
+
+                                    if 'PROPOSED' in weight_group:
+                                        weight.PROPOSED = self._load_dataframe(weight_group['PROPOSED'])
+
+                                    if 'TAO' in weight_group:
+                                        weight.TAO = self._load_dataframe(weight_group['TAO'])
+
+                                    if 'SHENG' in weight_group:
+                                        weight.SHENG = self._load_dataframe(weight_group['SHENG'])
+
+                                    seed_result.weight = weight
+
+                                # Load worker strength
+                                if 'workers_strength' in seed_group:
+                                    seed_result.workers_strength = self._load_dataframe(seed_group['workers_strength'])
+
+                                # Load true labels
+                                if 'true_label' in seed_group:
+                                    true_label_group = seed_group['true_label']
+                                    seed_result.true_label = {}
+
+                                    if 'train' in true_label_group:
+                                        seed_result.true_label['train'] = self._load_dataframe(true_label_group['train'])
+
+                                    if 'test' in true_label_group:
+                                        seed_result.true_label['test'] = self._load_dataframe(true_label_group['test'])
+
+                                worker_results[seed_idx] = seed_result
+                            except Exception as e:
+                                print(f"Error loading seed {key} for worker {worker_key}: {e}")
+
+                    outputs[worker_key] = worker_results
+
+                results.outputs = outputs
+
+            return results, config
+
+    def get_experiment_datasets(self):
+        """Get a list of all dataset names in the HDF5 file."""
+        with h5py.File(self.file_path, 'r') as f:
+            return list(f.keys())
+
+    def get_metrics_summary(self, dataset_name=None):
+        """Load a summary of metrics for all datasets or a specific dataset."""
+        results = []
+
+        with h5py.File(self.file_path, 'r') as f:
+            datasets = [dataset_name] if dataset_name else list(f.keys())
+
+            for dataset in datasets:
+                if dataset not in f:
+                    continue
+
+                dataset_group = f[dataset]
+                if 'outputs' not in dataset_group:
+                    continue
+
+                outputs_group = dataset_group['outputs']
+
+                for worker_key in outputs_group.keys():
+                    worker_group = outputs_group[worker_key]
+                    worker_count = worker_key.replace('NL', '') if worker_key.startswith('NL') else worker_key
+
+                    for seed_key in worker_group.keys():
+                        if not seed_key.startswith('seed_'):
+                            continue
+
+                        seed_idx = seed_key.split('_')[1]
+                        seed_group = worker_group[seed_key]
+
+                        # Extract metrics from proposed results
+                        if 'proposed' in seed_group:
+                            proposed_group = seed_group['proposed']
+                            if 'metrics' in proposed_group:
+                                metrics_df = self._load_dataframe(proposed_group['metrics'])
+
+                                for col in metrics_df.columns:
+                                    for idx, value in metrics_df[col].items():
+                                        results.append({
+                                            'dataset': dataset,
+                                            'worker_count': worker_count,
+                                            'seed': seed_idx,
+                                            'method': f'proposed_{col}',
+                                            'metric': idx,
+                                            'value': value
+                                        })
+
+                        # Extract metrics from benchmark results
+                        if 'benchmark' in seed_group:
+                            benchmark_group = seed_group['benchmark']
+                            if 'metrics' in benchmark_group:
+                                metrics_df = self._load_dataframe(benchmark_group['metrics'])
+
+                                for col in metrics_df.columns:
+                                    for idx, value in metrics_df[col].items():
+                                        results.append({
+                                            'dataset': dataset,
+                                            'worker_count': worker_count,
+                                            'seed': seed_idx,
+                                            'method': f'benchmark_{col}',
+                                            'metric': idx,
+                                            'value': value
+                                        })
+
+        return pd.DataFrame(results)
 
 
 # @functools.cache
@@ -1594,48 +2124,25 @@ class AIM1_3:
 		return functools.partial(AIM1_3.wrapper, config=config, data=data, feature_columns=feature_columns)
 
 
-	def get_outputs(self) -> Dict[str, List[ResultType]]:
+	# Modify the get_outputs method in the AIM1_3 class to use HDF5 storage
+	def get_outputs(self, use_hdf5=True) -> Dict[str, List[ResultType]]:
 		"""
 		Retrieves the outputs for the calculation or loads them from file based on the current configuration.
 
-		This method operates in two modes dictated by the configuration:
-
-		1. CALCULATE mode:
-			- Constructs an input list of parameter dictionaries, associating each worker ('nl') with a set of seeds.
-			- Defines an objective function using the given configuration, data, and feature columns.
-			- If parallelization is enabled, computes results in parallel using a Pool of workers; otherwise, computes results sequentially.
-			- Aggregates the results into an outputs dictionary where each key (formatted as "NL{nl}")
-				holds a list of results corresponding to each seed. Results are stored at the index of the seed
-				in the list. Missing results are represented as NaN.
-			- If output saving is enabled in the configuration, dumps the outputs to a file.
-			- Returns the populated outputs dictionary.
-
-		2. Non-CALCULATE mode:
-			- Loads the outputs directly from the specified file path.
+		Args:
+			use_hdf5: Whether to use HDF5 storage instead of pickle files
 
 		Returns:
 			Dict[str, List[ResultType]]:
 				A dictionary mapping output keys to lists containing the results for each seed.
 		"""
-
-		path = self.config.output.path / 'outputs' / f'{self.config.dataset.dataset_name}.pkl'
+		# Define paths for both storage methods
+		pickle_path = self.config.output.path / 'outputs' / f'{self.config.dataset.dataset_name}.pkl'
+		hdf5_path = self.config.output.path / 'outputs' / f'experiments.h5'
 
 		def update_outputs() -> Dict[str, List[ResultType]]:
 			"""
 			Update and return the simulation outputs based on the current core results.
-
-			This function constructs an output dictionary where each key follows the format 'NL{nl}'
-			for each worker as specified in the simulation configuration. For each worker, it initializes
-			a list of length `num_seeds` filled with NaN values using numpy's np.full. It then updates
-			the list by replacing the NaN at the index corresponding to the seed (as provided in the
-			core_results tuple) with the computed result value.
-
-			If the configuration flag to save outputs is enabled (self.config.output.save), the
-			outputs dictionary is dumped to a file via LoadSaveFile.
-
-			Returns:
-				Dict[str, List[ResultType]]: A dictionary mapping worker identifiers to lists
-				of results updated for each seed.
 			"""
 			nonlocal core_results
 
@@ -1646,12 +2153,26 @@ class AIM1_3:
 				outputs[f'NL{args["nl"]}'][args['seed']] = values
 
 			if self.config.output.save:
-				LoadSaveFile(path).dump(outputs)
+				if use_hdf5:
+					# Save to HDF5 file
+					storage = ExperimentHDF5Storage(hdf5_path)
+
+					# Create a result object with the required structure
+					class ResultComparison:
+						def __init__(self, outputs, config):
+							self.outputs = outputs
+							self.config = config
+							self.weight_strength_relation = self.worker_weight_strength_relation()
+
+					result_obj = ResultComparison(outputs, self.config)
+					storage.save_experiment_results(str(self.config.dataset.dataset_name), result_obj, self.config)
+				else:
+					# Save to pickle file (original method)
+					LoadSaveFile(pickle_path).dump(outputs)
 
 			return outputs
 
 		if self.config.output.mode is params.OutputModes.CALCULATE:
-
 			input_list = [{'nl': nl, 'seed': seed} for nl in self.config.simulation.workers_list for seed in range(self.config.simulation.num_seeds)]
 
 			function = AIM1_3.objective_function(config=self.config, data=self.data, feature_columns=self.feature_columns)
@@ -1659,36 +2180,90 @@ class AIM1_3:
 			if self.config.simulation.use_parallelization:
 				with multiprocessing.Pool(processes=min(self.config.simulation.max_parallel_workers, len(input_list))) as pool:
 					core_results = pool.map(function, input_list)
-
 			else:
 				core_results = [function(args) for args in input_list]
 
 			return update_outputs()
 
-		return LoadSaveFile(path).load()
+		# Load from storage
+		if use_hdf5:
+			storage = ExperimentHDF5Storage(hdf5_path)
+			try:
+				results, _ = storage.load_experiment_results(str(self.config.dataset.dataset_name))
+				return results.outputs
+			except (KeyError, FileNotFoundError):
+				# Fall back to pickle if HDF5 file doesn't exist
+				return LoadSaveFile(pickle_path).load()
+		else:
+			return LoadSaveFile(pickle_path).load()
 
+	# Modify the worker_weight_strength_relation method in the AIM1_3 class
+	def worker_weight_strength_relation(self, seed=0, n_workers=10, use_hdf5=True) -> pd.DataFrame:
+		"""
+		Calculate and retrieve the relationship between worker strength and weights.
 
-	def worker_weight_strength_relation(self, seed=0, n_workers=10) -> pd.DataFrame:
+		Args:
+			seed: Random seed to use
+			n_workers: Number of workers to simulate
+			use_hdf5: Whether to use HDF5 storage instead of pickle files
 
+		Returns:
+			pd.DataFrame: DataFrame containing the worker strength-weight relationship
+		"""
 		metric_name = 'weight_strength_relation'
-		path_main = self.config.output.path / metric_name / str(self.config.dataset.dataset_name)
-		lsf = LoadSaveFile(path_main / f'{metric_name}.xlsx')
+
+		# Define paths for both storage methods
+		pickle_path = self.config.output.path / metric_name / str(self.config.dataset.dataset_name) / f'{metric_name}.xlsx'
+		hdf5_path = self.config.output.path / 'outputs' / f'experiments.h5'
 
 		if self.config.output.mode is params.OutputModes.CALCULATE:
-			params_dict = {	'seed'           : seed,
-						'n_workers'      : n_workers,
-						'config'         : self.config,
-						'data'           : self.data,
-						'feature_columns': self.feature_columns,
-						'use_parallelization_benchmarks':self.config.simulation.use_parallelization}
+			params_dict = {
+				'seed': seed,
+				'n_workers': n_workers,
+				'config': self.config,
+				'data': self.data,
+				'feature_columns': self.feature_columns,
+				'use_parallelization_benchmarks': self.config.simulation.use_parallelization
+			}
 
 			df = AIM1_3.core_measurements(**params_dict).workers_strength.set_index('workers_strength').sort_index()
 
 			if self.config.output.save:
-				lsf.dump(df, index=True)
+				if use_hdf5:
+					# Save to HDF5 file
+					storage = ExperimentHDF5Storage(hdf5_path)
+
+					# Try to load existing results first
+					try:
+						results, config = storage.load_experiment_results(str(self.config.dataset.dataset_name))
+						results.weight_strength_relation = df
+						storage.save_experiment_results(str(self.config.dataset.dataset_name), results, config)
+					except (KeyError, FileNotFoundError):
+						# Create a new result object with the required structure
+						class ResultObject:
+							def __init__(self):
+								self.weight_strength_relation = df
+								self.outputs = {}
+
+						storage.save_experiment_results(str(self.config.dataset.dataset_name), ResultObject(), self.config)
+				else:
+					# Save to Excel file (original method)
+					pickle_path.parent.mkdir(parents=True, exist_ok=True)
+					LoadSaveFile(pickle_path).dump(df, index=True)
+
 			return df
 
-		return lsf.load(header=0)
+		# Load from storage
+		if use_hdf5:
+			storage = ExperimentHDF5Storage(hdf5_path)
+			try:
+				results, _ = storage.load_experiment_results(str(self.config.dataset.dataset_name))
+				return results.weight_strength_relation
+			except (KeyError, FileNotFoundError, AttributeError):
+				# Fall back to Excel file if HDF5 file doesn't exist or doesn't have the data
+				return LoadSaveFile(pickle_path).load(header=0)
+		else:
+			return LoadSaveFile(pickle_path).load(header=0)
 
 	"""
 	def get_confidence_scores(self, outputs) -> dict[str, dict[StrategyNames, dict[str, pd.DataFrame]]]:
@@ -1748,56 +2323,68 @@ class AIM1_3:
 		return { key: LoadSaveFile(path_main / f'{key}.pkl').load()  for key in DICT_KEYS }
 	"""
 
+	# Modify the calculate_one_dataset and calculate_all_datasets methods
 	@classmethod
-	def calculate_one_dataset(cls, config: Settings, dataset_name: params.DatasetNames=None) -> ResultComparisonsType:
+	def calculate_one_dataset(cls, config: Settings, dataset_name: params.DatasetNames=None, use_hdf5=True) -> ResultComparisonsType:
 		"""
 		Calculates various output metrics and analyses for a given dataset using the provided configuration.
 
-		This method updates the configuration to specify the desired dataset, loads the corresponding data,
-		computes model outputs using the instance created with the input data and configuration, and then
-		evaluates the worker weight strength relationship. The results, along with the outputs and configuration,
-		are encapsulated in a ResultComparisonsType object that is returned to the caller.
-
-		Parameters:
-			config (Settings): Configuration settings that include parameters, dataset details, and other experiment configurations.
-			dataset_name (params.DatasetNames, optional): The identifier for the dataset to be processed.
-				Defaults to params.DatasetNames.IONOSPHERE.
+		Args:
+			config: Configuration settings
+			dataset_name: The identifier for the dataset to be processed
+			use_hdf5: Whether to use HDF5 storage instead of pickle files
 
 		Returns:
-			ResultComparisonsType: An object containing:
-				- weight_strength_relation: The computed relationship between worker weights and strength.
-				- outputs: The outputs produced by the model after running the dataset.
-				- config: The configuration that was used for the computation.
-
-		Note:
-			The method internally loads the dataset using the UCI database reader,
-			creates an instance for further analysis, and computes the required metrics.
+			ResultComparisonsType: An object containing results and configuration
 		"""
-
 		if dataset_name is not None:
 			config.dataset.dataset_name = dataset_name
 
-		# loading the dataset
+		# Loading the dataset
 		data, feature_columns = dataset_loader.load_dataset(config=config)
 
 		aim1_3 = cls(data=data, feature_columns=feature_columns, config=config)
 
-		# getting the outputs
-		outputs = aim1_3.get_outputs()
+		# Getting the outputs
+		outputs = aim1_3.get_outputs(use_hdf5=use_hdf5)
 
 		# measuring the confidence scores
 		# findings_confidence_score = aim1_3.get_confidence_scores(outputs)
 
-		# measuring the worker strength weight relationship for proposed and Tao
-		weight_strength_relation = aim1_3.worker_weight_strength_relation(seed=0, n_workers=10 )
+		# Measuring the worker strength weight relationship for proposed and Tao
+		weight_strength_relation = aim1_3.worker_weight_strength_relation(seed=0, n_workers=10, use_hdf5=use_hdf5)
 
+		return ResultComparisonsType(weight_strength_relation=weight_strength_relation, outputs=outputs, config=config)
 
-		return ResultComparisonsType( weight_strength_relation=weight_strength_relation, outputs=outputs, config=config )
 
 
 	@classmethod
-	def calculate_all_datasets(cls, config: 'Settings') -> Dict[params.DatasetNames, ResultComparisonsType]:
-		return {dt: cls.calculate_one_dataset(dataset_name=dt, config=config) for dt in config.dataset.datasetNames}
+	def calculate_all_datasets(cls, config: 'Settings', use_hdf5=True) -> Dict[params.DatasetNames, ResultComparisonsType]:
+		"""
+		Calculate results for all datasets specified in the configuration.
+
+		Args:
+			config: Configuration settings
+			use_hdf5: Whether to use HDF5 storage instead of pickle files
+
+		Returns:
+			Dictionary mapping dataset names to result objects
+		"""
+		results = {}
+
+		for dt in config.dataset.datasetNames:
+			results[dt] = cls.calculate_one_dataset(dataset_name=dt, config=config, use_hdf5=use_hdf5)
+
+		# If using HDF5, save a combined metrics summary for easier cross-dataset analysis
+		if use_hdf5 and config.output.save:
+			storage = ExperimentHDF5Storage(config.output.path / 'outputs' / f'experiments.h5')
+			metrics_df = storage.get_metrics_summary()
+
+			# Save the combined metrics to a CSV file for easier access
+			metrics_path = config.output.path / 'outputs' / 'combined_metrics.csv'
+			metrics_df.to_csv(metrics_path, index=False)
+
+		return results
 
 
 class Aim1_3_Data_Analysis_Results:
@@ -2502,6 +3089,55 @@ class Aim1_3_Data_Analysis_Results:
 
 		self.save_outputs( filename=f'figure_{filename}', relative_path=relative_path, dataframe=df.T )
 
+	# Add this to the Aim1_3_Data_Analysis_Results class
+	def update_with_hdf5(self) -> 'Aim1_3_Data_Analysis_Results':
+		"""
+		Update the internal state with calculated results using HDF5 storage.
+
+		Returns:
+			Aim1_3_Data_Analysis_Results: Returns self to allow for method chaining.
+		"""
+		self.results_all_datasets = AIM1_3.calculate_all_datasets(config=self.config, use_hdf5=True)
+		return self
+
+	def get_result_from_hdf5(self, metric_name, dataset_name=None, **kwargs):
+		"""
+		Get results from HDF5 storage directly.
+
+		Args:
+			metric_name: The metric to retrieve
+			dataset_name: The dataset to query, if applicable
+			**kwargs: Additional parameters for specific metrics
+
+		Returns:
+			The requested metrics or data
+		"""
+		hdf5_path = self.config.output.path / 'outputs' / f'experiments.h5'
+		storage = ExperimentHDF5Storage(hdf5_path)
+
+		if metric_name == 'metrics_summary':
+			return storage.get_metrics_summary(dataset_name)
+
+		elif metric_name == 'weight_strength_relation':
+			if dataset_name:
+				return storage.load_experiment_results(str(dataset_name))[0].weight_strength_relation
+			else:
+				# If no dataset specified, combine all weight_strength_relations
+				wsr_combined = pd.DataFrame()
+				for dt in self.config.dataset.datasetNames:
+					try:
+						df = storage.load_experiment_results(str(dt))[0].weight_strength_relation
+						df = df.reset_index()
+						df['dataset'] = str(dt)
+						wsr_combined = pd.concat([wsr_combined, df])
+					except:
+						continue
+				return wsr_combined
+
+		# If not a special case, fall back to regular get_result
+		return self.get_result(metric_name=metric_name, dataset_name=dataset_name, **kwargs)
+
+
 
 class AIM1_3_Plot:
 	"""
@@ -2698,3 +3334,91 @@ class AIM1_3_Plot:
 		elif show_markers == 'all':
 			plt.plot(x, y, 'o')
 
+
+@staticmethod
+def migrate_legacy_data_to_hdf5(config: Settings):
+    """
+    Migrate data from the old pickle format to the new HDF5 format.
+
+    Args:
+        config: Configuration settings
+    """
+    hdf5_path = config.output.path / 'outputs' / f'experiments.h5'
+    storage = ExperimentHDF5Storage(hdf5_path)
+
+    # Find all datasets with legacy data
+    for dataset_name in config.dataset.datasetNames:
+        pickle_path = config.output.path / 'outputs' / f'{dataset_name}.pkl'
+
+        if pickle_path.exists():
+            print(f"Migrating {dataset_name} from pickle to HDF5...")
+            try:
+                # Load legacy data
+                outputs = LoadSaveFile(pickle_path).load()
+
+                # Load weight_strength_relation if it exists
+                wsr_path = config.output.path / 'weight_strength_relation' / str(dataset_name) / 'weight_strength_relation.xlsx'
+                weight_strength_relation = None
+                if wsr_path.exists():
+                    try:
+                        weight_strength_relation = LoadSaveFile(wsr_path).load(header=0)
+                    except:
+                        print(f"Could not load weight_strength_relation for {dataset_name}")
+
+                # Create a result object
+                class ResultObject:
+                    def __init__(self):
+                        self.outputs = outputs
+                        self.weight_strength_relation = weight_strength_relation
+
+                # Save to HDF5
+                storage.save_experiment_results(str(dataset_name), ResultObject(), config)
+                print(f"Successfully migrated {dataset_name}")
+
+            except Exception as e:
+                print(f"Error migrating {dataset_name}: {e}")
+
+    print("Migration complete")
+
+@staticmethod
+def get_metrics_across_datasets(config: Settings):
+    """
+    Get a DataFrame with metrics across all datasets.
+
+    Args:
+        config: Configuration settings
+
+    Returns:
+        pd.DataFrame: DataFrame with metrics for all datasets
+    """
+    hdf5_path = config.output.path / 'outputs' / f'experiments.h5'
+    storage = ExperimentHDF5Storage(hdf5_path)
+
+    return storage.get_metrics_summary()
+
+@staticmethod
+def compare_metrics_between_datasets(config: Settings, datasets: List[params.DatasetNames]=None):
+    """
+    Compare metrics between different datasets.
+
+    Args:
+        config: Configuration settings
+        datasets: List of datasets to compare. If None, uses all datasets.
+
+    Returns:
+        pd.DataFrame: Pivot table comparing metrics across datasets
+    """
+    metrics_df = AIM1_3.get_metrics_across_datasets(config)
+
+    if datasets:
+        metrics_df = metrics_df[metrics_df['dataset'].isin([str(d) for d in datasets])]
+
+    # Create a pivot table for easier comparison
+    pivot = metrics_df.pivot_table(
+        index=['method', 'metric'],
+        columns='dataset',
+        values='value',
+        aggfunc='mean'  # Average across seeds
+    )
+
+    return pivot

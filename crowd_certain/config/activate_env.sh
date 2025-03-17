@@ -1,2 +1,2 @@
 #!/bin/bash
-source .venv/bin/activate
+conda activate crowd-certain

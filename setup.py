@@ -7,14 +7,18 @@ and confidence scoring.
 """
 
 import os
+import codecs
 from setuptools import find_packages, setup
 
+# Get the absolute path to the directory containing setup.py
+here = os.path.abspath(os.path.dirname(__file__))
+
 # Read the README file
-with open("README.md", "r", encoding="utf-8") as fh:
+with codecs.open(os.path.join(here, "README.md"), encoding="utf-8") as fh:
     long_description = fh.read()
 
 # Read requirements
-with open("requirements.txt", "r", encoding="utf-8") as fh:
+with codecs.open(os.path.join(here, "crowd_certain", "config", "requirements.txt"), encoding="utf-8") as fh:
     requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
 
 # Package metadata
@@ -42,15 +46,28 @@ CLASSIFIERS = [
 # Package data
 PACKAGE_DATA = {
     "crowd_certain": [
-        "config.json",
-        "docs/*",
-        "scripts/*",
-        "utilities/*",
-        "datasets/*",
-        "notebooks/*",
-        "outputs/*",
+        "config/*.json",
+        "config/requirements.txt",
+        "docs/**/*",
+        "scripts/**/*",
+        "utilities/**/*",
+        "datasets/**/*",
+        "notebooks/**/*",
+        "outputs/**/*",
     ]
 }
+
+# Development requirements
+DEV_REQUIREMENTS = [
+    "pytest>=8.3.5",
+    "black>=25.1.0",
+    "isort>=6.0.1",
+    "flake8>=7.1.2",
+    "mypy>=1.15.0",
+    "sphinx>=8.2.3",
+    "sphinx-rtd-theme>=3.0.2",
+    "sphinx-autodoc-typehints>=3.1.0",
+]
 
 setup(
     name=PACKAGE_NAME,
@@ -65,7 +82,15 @@ setup(
     classifiers=CLASSIFIERS,
     python_requires=">=3.10",
     install_requires=requirements,
-    packages=find_packages(),
+    extras_require={
+        "dev": DEV_REQUIREMENTS,
+        "docs": [
+            "sphinx>=8.2.3",
+            "sphinx-rtd-theme>=3.0.2",
+            "sphinx-autodoc-typehints>=3.1.0",
+        ],
+    },
+    packages=find_packages(exclude=["tests*", "docs*"]),
     package_data=PACKAGE_DATA,
     include_package_data=True,
     zip_safe=False,

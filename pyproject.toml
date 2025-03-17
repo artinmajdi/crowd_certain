@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=64.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crowd-certain"
+version = "1.0.0"
+description = "A comprehensive framework for crowd-sourced label aggregation with uncertainty estimation and confidence scoring"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache License 2.0"}
+authors = [
+    {name = "Artin Majdi", email = "msm2024@gmail.com"}
+]
+
+[tool.setuptools]
+packages = ["crowd_certain"]
+package-dir = {"" = "."}
+
+[tool.setuptools.package-data]
+"crowd_certain" = [
+    "config/*.json",
+    "config/*.toml",
+    "config/requirements.txt",
+    "docs/**/*",
+    "scripts/**/*",
+    "utilities/**/*",
+    "datasets/**/*",
+    "notebooks/**/*",
+    "outputs/**/*"
+]
