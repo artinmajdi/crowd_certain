@@ -16,6 +16,7 @@ dependencies:
   - notebook>=7.3.3
   - streamlit>=1.43.2
   - plotly>=6.0.0
+  - h5py>=3.7.0
   - pip:
     - crowd-kit>=1.4.1
     - wget>=3.2
@@ -33,3 +34,4 @@ dependencies:
     - setuptools>=76.0.0
     - wheel>=0.45.1
     - watchdog>=6.0.0
+    - ucimlrepo>=0.3.0

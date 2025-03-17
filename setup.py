@@ -48,6 +48,7 @@ PACKAGE_DATA = {
     "crowd_certain": [
         "config/*.json",
         "config/requirements.txt",
+        "config/environment.yml",
         "docs/**/*",
         "scripts/**/*",
         "utilities/**/*",
@@ -89,6 +90,9 @@ setup(
             "sphinx-rtd-theme>=3.0.2",
             "sphinx-autodoc-typehints>=3.1.0",
         ],
+        "storage": [
+            "h5py>=3.7.0",
+        ],
     },
     packages=find_packages(exclude=["tests*", "docs*"]),
     package_data=PACKAGE_DATA,
@@ -106,6 +110,7 @@ setup(
         "confidence-scoring",
         "machine-learning",
         "data-science",
+        "hdf5-storage",
     ],
     project_urls={
         "Bug Tracker": f"{URL}/issues",

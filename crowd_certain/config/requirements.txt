@@ -23,6 +23,18 @@ jupyter>=1.1.1
 ipywidgets>=8.1.5
 notebook>=7.3.3
 
+# Data storage and serialization
+h5py>=3.7.0
+openpyxl>=3.1.2
+
+# Progress tracking
+tqdm>=4.67.1
+
+# Package management
+setuptools>=76.0.0
+wheel>=0.45.1
+watchdog>=6.0.0
+
 # Development and testing
 pytest>=8.3.5
 black>=25.1.0
@@ -35,16 +47,5 @@ sphinx>=8.2.3
 sphinx-rtd-theme>=3.0.2
 sphinx-autodoc-typehints>=3.1.0
 
-# Progress tracking
-tqdm>=4.67.1
-
-# Package management
-setuptools>=76.0.0
-wheel>=0.45.1
-watchdog>=6.0.0
-
-# Parallel processing
-openpyxl>=3.1.2
-
-# Add h5py for HDF5 storage
-h5py>=3.7.0
+# UCI Machine Learning Repository
+ucimlrepo>=0.3.0
