@@ -18,7 +18,7 @@ Crowd-Certain is a comprehensive framework for aggregating labels from multiple 
 - Calculating worker weights based on their consistency and reliability
 - Estimating uncertainty in crowd-sourced labels using multiple techniques
 - Generating confidence scores for aggregated labels
-- Benchmarking against established crowd-sourcing techniques
+- Benchmarking against established crowdsourcing techniques
 - Analyzing the relationship between worker strength and label quality
 
 ## Quick Links
