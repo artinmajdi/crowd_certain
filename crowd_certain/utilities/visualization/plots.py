@@ -4,10 +4,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import Any
 
-from crowd_certain.utilities import params
-from crowd_certain.utilities.hdf5_storage import HDF5Storage
+from crowd_certain.utilities.config import params
+from crowd_certain.utilities.io.hdf5_storage import HDF5Storage
 from crowd_certain.utilities.utils import AIM1_3
-from crowd_certain.utilities.dataset_loader import LoadSaveFile
+from crowd_certain.utilities.io.dataset_loader import LoadSaveFile
 
 # Global variable used in the module
 USE_HD5F_STORAGE = False

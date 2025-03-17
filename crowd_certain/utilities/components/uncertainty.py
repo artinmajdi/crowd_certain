@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import scipy
 
-from crowd_certain.utilities import params
+from crowd_certain.utilities.config import params
 
 class UncertaintyCalculator:
     """

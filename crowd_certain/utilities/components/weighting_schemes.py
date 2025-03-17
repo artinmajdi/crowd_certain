@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, Tuple, Union
 
-from crowd_certain.utilities import params
+from crowd_certain.utilities.config import params
 from crowd_certain.utilities.components.uncertainty import calculate_consistency
 
 class WeightingSchemes:
@@ -192,8 +192,8 @@ class WeightingSchemes:
         return pd.DataFrame(1 / n_workers, index=index, columns=columns)
 
     def get_weights(self, workers_labels: pd.DataFrame, preds: pd.DataFrame,
-                   uncertainties: pd.DataFrame, noisy_true_labels: pd.DataFrame,
-                   n_workers: int) -> params.WeightType:
+                    uncertainties: pd.DataFrame, noisy_true_labels: pd.DataFrame,
+                    n_workers: int) -> params.WeightType:
         """
         Calculate weights for different methods (proposed, TAO, and SHENG).
 

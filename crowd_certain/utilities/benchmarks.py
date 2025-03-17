@@ -6,7 +6,7 @@ from typing import Callable, Dict, Tuple
 
 import numpy as np
 import pandas as pd
-from crowd_certain.utilities import params
+from crowd_certain.utilities.config import params
 
 
 class BenchmarkTechniques:

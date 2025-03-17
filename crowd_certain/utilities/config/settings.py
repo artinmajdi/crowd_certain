@@ -4,13 +4,12 @@ import pathlib
 import shutil
 import sys
 from typing import Any, TypeAlias, Union, Tuple
-import numpy as np
 from typing_extensions import Annotated
-from pydantic import BaseModel, confloat, conint, Field
+from pydantic import BaseModel, Field
 from pydantic.functional_validators import field_validator
 import sklearn
 
-from crowd_certain.utilities import params
+from crowd_certain.utilities.config import params
 
 PathNoneType: TypeAlias = Union[pathlib.Path, None]
 

@@ -1,8 +1,9 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import enum
-from typing import Type, TypeVar, Callable, List, Iterator, Tuple
-from crowd_certain.utilities.settings import Settings
+from typing import Iterator, List, Type, TypeVar
+import pandas as pd
+from crowd_certain.utilities.config.settings import Settings
 
 import pandas as pd
 

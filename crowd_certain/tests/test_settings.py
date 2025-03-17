@@ -2,13 +2,10 @@
 Test script for the Settings class that handles configuration.
 """
 
-import os
-import json
-import tempfile
 from pathlib import Path
 
-from crowd_certain.utilities.settings import Settings
-from crowd_certain.utilities.params import DatasetNames
+from crowd_certain.utilities.config.settings import Settings
+from crowd_certain.utilities.config.params import DatasetNames
 
 def test_settings_initialization():
     """Test the initialization of the Settings class with different parameters."""

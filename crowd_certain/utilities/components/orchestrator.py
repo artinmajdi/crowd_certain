@@ -13,9 +13,9 @@ from typing import Callable, Dict, List, Tuple, Union
 import numpy as np
 import pandas as pd
 
-from crowd_certain.utilities import params, dataset_loader
-from crowd_certain.utilities.hdf5_storage import HDF5Storage
-from crowd_certain.utilities.settings import Settings
+from crowd_certain.utilities.config import params
+from crowd_certain.utilities.io.hdf5_storage import HDF5Storage
+from crowd_certain.utilities.config.settings import Settings
 from crowd_certain.utilities.components.worker_simulation import WorkerSimulator
 from crowd_certain.utilities.components.weighting_schemes import WeightingSchemes
 from crowd_certain.utilities.components.confidence_scoring import ConfidenceScorer
@@ -282,7 +282,7 @@ class Orchestrator:
             h5s = HDF5Storage(path)
         else:
             path = self.config.output.path / 'outputs' / f'{self.config.dataset.dataset_name}.pkl'
-            from crowd_certain.utilities.dataset_loader import LoadSaveFile
+            from crowd_certain.utilities.io.dataset_loader import LoadSaveFile
             lsf = LoadSaveFile(path)
 
         # If loading from file

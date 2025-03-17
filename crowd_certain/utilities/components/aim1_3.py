@@ -5,14 +5,13 @@ This module contains a simplified version of the AIM1_3 class that uses
 components from other modules to perform crowd-sourcing simulations and analyses.
 """
 
-from typing import Dict, Tuple, Optional
+from typing import Dict, Optional
 import numpy as np
 import pandas as pd
 
-from crowd_certain.utilities import params, dataset_loader
-from crowd_certain.utilities.hdf5_storage import HDF5Storage
-from crowd_certain.utilities.dataset_loader import LoadSaveFile
-from crowd_certain.utilities.settings import Settings
+from crowd_certain.utilities.config import params
+from crowd_certain.utilities.io import dataset_loader, HDF5Storage, LoadSaveFile
+from crowd_certain.utilities.config.settings import Settings
 from crowd_certain.utilities.components.orchestrator import Orchestrator
 
 # Whether to use HDF5 storage for saving/loading results

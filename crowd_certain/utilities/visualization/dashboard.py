@@ -20,10 +20,10 @@ from typing import Dict, List, Any, Optional, Tuple, Union
 
 # Import directly from the utilities module since we're now in the same package
 from crowd_certain.utilities.utils import AIM1_3
-from crowd_certain.utilities import params
-from crowd_certain.utilities.settings import Settings, get_settings, find_config_file, revert_to_default_config
+from crowd_certain.utilities.config import params
+from crowd_certain.utilities.config.settings import Settings, get_settings, find_config_file, revert_to_default_config
 from crowd_certain.utilities.utils import ResultComparisonsType
-from crowd_certain.utilities.dataset_loader import find_dataset_path
+from crowd_certain.utilities.io.dataset_loader import find_dataset_path
 
 class DashboardStyles:
     """Manages CSS styles for the dashboard."""

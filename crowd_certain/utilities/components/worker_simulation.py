@@ -10,7 +10,7 @@ import pandas as pd
 from typing import Dict, Tuple
 
 from sklearn import ensemble as sk_ensemble
-from crowd_certain.utilities import params
+from crowd_certain.utilities.config import params
 
 class WorkerSimulator:
     """

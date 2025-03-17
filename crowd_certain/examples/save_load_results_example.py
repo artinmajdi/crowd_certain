@@ -4,14 +4,13 @@ Example: Saving and loading simulation results
 This example demonstrates how to save simulation results to disk and load them later.
 """
 
-import os
 from pathlib import Path
 import pickle
 from datetime import datetime
 
-from crowd_certain.utilities.utils import AIM1_3
-from crowd_certain.utilities.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques
-from crowd_certain.utilities.settings import Settings, OutputModes
+from crowd_certain.utilities.components.aim1_3 import AIM1_3
+from crowd_certain.utilities.config.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques
+from crowd_certain.utilities.config.settings import Settings, OutputModes
 
 
 def save_results_example():

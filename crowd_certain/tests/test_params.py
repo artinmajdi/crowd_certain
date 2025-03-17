@@ -3,7 +3,7 @@ Test script for the params module containing enums like DatasetNames.
 """
 
 import pytest
-from crowd_certain.utilities.params import DatasetNames
+from crowd_certain.utilities.config.params import DatasetNames
 
 def test_dataset_names_enum():
     """Test properties and methods of the DatasetNames enum."""
