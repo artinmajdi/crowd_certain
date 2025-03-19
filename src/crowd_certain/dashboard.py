@@ -12,6 +12,7 @@ from typing import List
 
 # Third-party imports
 import matplotlib.pyplot as plt
+import pandas as pd
 import seaborn as sns
 import streamlit as st
 
@@ -567,46 +568,45 @@ class ResultsTab:
 
         # Create tabs for each confidence score method
         if confidence_scores:
-            # Add debug information
-            # st.write("Confidence score keys types:", [type(key).__name__ for key in confidence_scores.keys()])
+            # Extract unique options from the keys of the confidence_scores dictionary
+            first_options  = sorted({key[0] for key in confidence_scores.keys()})
+            second_options = sorted({key[1] for key in confidence_scores.keys()})
+            third_options  = sorted({key[2] for key in confidence_scores.keys()})
 
-            # Convert keys to strings to avoid StreamlitAPIException
+            # Create three dropdown menus for each element of the tuple key
+            selected_first  = st.selectbox("Select first element", first_options)
+            selected_second = st.selectbox("Select second element", second_options)
+            selected_third  = st.selectbox("Select third element", third_options)
 
-            # Debug the confidence_scores structure
-            st.subheader("Debugging confidence_scores")
-            st.write("Type:", type(confidence_scores))
-            st.write("Keys:", list(confidence_scores.keys()))
-            st.write("Key types:", [type(key).__name__ for key in confidence_scores.keys()])
+            # Build the selected key tuple from the dropdown values
+            selected_key = (selected_first, selected_second, selected_third)
 
-            # Show a sample of the data structure
-            if confidence_scores:
-                first_key = list(confidence_scores.keys())[0]
-                st.write(f"Sample for first key ({first_key}):")
-                st.write("Type:", type(confidence_scores[first_key]))
-                st.write("Preview:", confidence_scores[first_key].head())
+            # Check if the selected key exists in the dictionary
+            if selected_key in confidence_scores:
+                scores = confidence_scores[selected_key]
+                st.dataframe(scores)
 
-            confidence_tabs = st.tabs([str(key) for key in confidence_scores.keys()])
-
-            for i, (method, scores) in enumerate(confidence_scores.items()):
-                with confidence_tabs[i]:
-                    st.dataframe(scores)
-
-                    # Plot histogram of confidence scores
-                    fig, ax = plt.subplots(figsize=(10, 6))
-
-                    # Get the F scores (first level)
+                # Plot histogram of confidence scores
+                fig, ax = plt.subplots(figsize=(10, 6))
+                # Determine if the DataFrame columns are a MultiIndex and filter for 'F' scores if possible
+                if isinstance(scores.columns, pd.MultiIndex):
                     f_scores = scores.iloc[:, scores.columns.get_level_values(0) == 'F']
+                else:
+                    f_scores = scores
 
-                    # Plot histogram
+                if not f_scores.empty:
                     for col in f_scores.columns:
                         sns.histplot(f_scores[col], kde=True, ax=ax, label=col)
-
                     ax.set_xlabel("Confidence Score")
                     ax.set_ylabel("Frequency")
-                    ax.set_title(f"Distribution of Confidence Scores for {method}")
+                    ax.set_title(f"Distribution of Confidence Scores for {selected_key}")
                     ax.legend()
-
+                    fig.tight_layout()
                     st.pyplot(fig)
+                else:
+                    st.info("No F score data available for the selected combination.")
+            else:
+                st.info("No data available for the selected combination.")
 
 
 class WorkerAnalysisTab:

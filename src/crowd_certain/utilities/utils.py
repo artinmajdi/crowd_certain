@@ -129,12 +129,12 @@ class AIM1_3:
 		calculate_one_dataset(): Entry point for running simulations on a single dataset
 		calculate_all_datasets(): Entry point for running simulations on multiple datasets
 	"""
-	data            : dict
-	feature_columns : list
-	config           : 'Settings'
-	classifier_training : ClassifierTraining
-	n_workers       : int = 3
-	seed            : int = 0
+	data               : dict
+	feature_columns    : list
+	config             : 'Settings'
+	classifier_training: Optional[ClassifierTraining] = None
+	n_workers          : int = 3
+	seed               : int = 0
 
 	def __post_init__(self):
 		self.classifier_training = ClassifierTraining(config=self.config)
@@ -1499,7 +1499,7 @@ class AIM1_3:
 			return {dt: cls.calculate_one_dataset(dataset_name=dt, config=config) for dt in config.dataset.datasetNames}
 
 		# Check if we should load all results from a combined HDF5 file
-		if config.output.mode is params.OutputModes.LOAD:
+		if config.output.mode is params.OutputModes.LOAD_LOCAL:
 			h5_path = config.output.path / 'results' / 'all_datasets.h5'
 			h5s = HDF5Storage(h5_path)
 			results = h5s.load_all_datasets_results(config.dataset.datasetNames)
@@ -1518,6 +1518,8 @@ class AIM1_3:
 			h5s.save_all_datasets_results(results)
 
 		return results
+
+
 
 class Aim1_3_Data_Analysis_Results:
 	"""

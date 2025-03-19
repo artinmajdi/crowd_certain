@@ -13,6 +13,10 @@ echo -e "${BLUE}          Crowd-Certain Installation Script                ${NC}
 echo -e "${BLUE}===========================================================${NC}"
 echo ""
 
+# Get the project root directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." &> /dev/null && pwd )"
+
 # Function to check if a command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
@@ -144,7 +148,7 @@ install_with_conda() {
                 echo -e "${YELLOW}Removing existing conda environment...${NC}"
                 conda env remove -n crowd-certain
                 echo -e "${YELLOW}Creating new conda environment from environment.yml...${NC}"
-                mamba env update --file crowd_certain/config/environment.yml
+                mamba env update --file environment.yml
             else
                 echo -e "${YELLOW}Installation aborted.${NC}"
                 exit 1
@@ -152,7 +156,7 @@ install_with_conda() {
         fi
     else
         echo -e "${YELLOW}Creating conda environment from environment.yml...${NC}"
-        mamba env update --file crowd_certain/config/environment.yml
+        mamba env update --file environment.yml
     fi
 
     # Activate the conda environment
@@ -207,25 +211,25 @@ echo -e "${YELLOW}See the documentation in the docs/ directory for usage example
 echo -e "${BLUE}===========================================================${NC}"
 
 # Create activation script
-if [ "$INSTALL_TYPE" == "venv" ]; then
-    echo '#!/bin/bash' > crowd_certain/config/activate_env.sh
-    if [ "$OS" == "Windows" ]; then
-        echo 'source .venv/Scripts/activate' >> crowd_certain/config/activate_env.sh
+if [ "$choice" == "1" ]; then
+    echo '#!/bin/bash' > scripts/activate_env.sh
+    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+        echo 'source .venv/Scripts/activate' >> scripts/activate_env.sh
     else
-        echo 'source .venv/bin/activate' >> crowd_certain/config/activate_env.sh
+        echo 'source .venv/bin/activate' >> scripts/activate_env.sh
     fi
-    chmod +x crowd_certain/config/activate_env.sh
+    chmod +x scripts/activate_env.sh
 
     echo -e "${GREEN}Installation complete!${NC}"
     echo -e "${BLUE}To activate the environment, run:${NC}"
-    echo -e "${BLUE}source ./crowd_certain/config/activate_env.sh${NC}"
+    echo -e "${BLUE}source ./scripts/activate_env.sh${NC}"
 else
     # Create activation script for conda
-    echo '#!/bin/bash' > crowd_certain/config/activate_env.sh
-    echo 'conda activate crowd-certain' >> crowd_certain/config/activate_env.sh
-    chmod +x crowd_certain/config/activate_env.sh
+    echo '#!/bin/bash' > scripts/activate_env.sh
+    echo 'conda activate crowd-certain' >> scripts/activate_env.sh
+    chmod +x scripts/activate_env.sh
 
     echo -e "${GREEN}Installation complete!${NC}"
     echo -e "${BLUE}To activate the environment, run:${NC}"
-    echo -e "${BLUE}source ./crowd_certain/config/activate_env.sh${NC}"
+    echo -e "${BLUE}source ./scripts/activate_env.sh${NC}"
 fi
