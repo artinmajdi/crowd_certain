@@ -1,11 +1,11 @@
-"""
-Input/output utilities for crowd-certain.
+"""IO utilities for the crowd-certain package.
 
-This module provides functions and classes for loading, saving, and
-manipulating data used by the crowd-certain package.
+This module provides input/output utilities for the crowd-certain package,
+including dataset loading and HDF5 storage functionality.
 """
 
 from crowd_certain.utilities.io.dataset_loader import (
+    Dict2Class,
     LoadSaveFile,
     find_dataset_path,
     load_dataset,
@@ -13,12 +13,12 @@ from crowd_certain.utilities.io.dataset_loader import (
     separate_train_test,
     load_from_local_cache,
     save_to_local_cache,
-    Dict2Class
 )
 from crowd_certain.utilities.io.hdf5_storage import HDF5Storage
 
 __all__ = [
-    # From dataset_loader
+    # Dataset loading utilities
+    'Dict2Class',
     'LoadSaveFile',
     'find_dataset_path',
     'load_dataset',
@@ -26,8 +26,6 @@ __all__ = [
     'separate_train_test',
     'load_from_local_cache',
     'save_to_local_cache',
-    'Dict2Class',
-
-    # From hdf5_storage
+    # HDF5 storage
     'HDF5Storage',
 ]

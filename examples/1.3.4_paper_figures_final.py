@@ -1,4 +1,4 @@
-from crowd_certain.utilities import utils
+from src.crowd_certain.utilities import utils
 from crowd_certain.utilities.parameters.settings import ConfigManager
 
 def main():

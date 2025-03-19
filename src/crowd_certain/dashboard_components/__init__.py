@@ -1,26 +1,23 @@
-"""
-Core components for the crowd-certain utilities.
+"""Dashboard components for the crowd-certain package.
 
-These components provide the modular building blocks for the crowd-certain system,
-including simulation, uncertainty calculation, metrics, and other functionality.
+This module provides components for the Streamlit-based dashboard,
+including metrics, orchestration, simulation, and visualization components.
 """
 
-from crowd_certain.utilities._components.aim1_3 import AIM1_3
-from crowd_certain.utilities._components.uncertainty import UncertaintyCalculator, calculate_uncertainties, calculate_consistency
-from crowd_certain.utilities._components.worker_simulation import WorkerSimulator
-from crowd_certain.utilities._components.weighting_schemes import WeightingSchemes
-from crowd_certain.utilities._components.confidence_scoring import ConfidenceScorer
-from crowd_certain.utilities._components.metrics import MetricsCalculator
-from crowd_certain.utilities._components.orchestrator import Orchestrator
+from crowd_certain.dashboard_components.aim1_3 import AIM1_3
+from crowd_certain.dashboard_components.confidence_scoring import ConfidenceScorer
+from crowd_certain.dashboard_components.metrics import MetricsCalculator
+from crowd_certain.dashboard_components.orchestrator import Orchestrator
+from crowd_certain.dashboard_components.uncertainty import UncertaintyCalculator
+from crowd_certain.dashboard_components.weighting_schemes import WeightingSchemes
+from crowd_certain.dashboard_components.worker_simulation import WorkerSimulator
 
 __all__ = [
     'AIM1_3',
-    'UncertaintyCalculator',
-    'WorkerSimulator',
-    'WeightingSchemes',
     'ConfidenceScorer',
     'MetricsCalculator',
     'Orchestrator',
-    'calculate_uncertainties',
-    'calculate_consistency',
+    'UncertaintyCalculator',
+    'WeightingSchemes',
+    'WorkerSimulator',
 ]

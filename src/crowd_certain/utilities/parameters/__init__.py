@@ -18,38 +18,19 @@ from crowd_certain.utilities.parameters.params import (
     OtherBenchmarkNames,
     MainBenchmarks,
     ProposedTechniqueNames,
-    StrategyNames,
-    ConfidenceScoreNames,
-    SimulationMethods,
-    ResultType,
-    WeightType,
-    Result2Type,
-    ResultComparisonsType
 )
 
-# Import from settings module
+# Import settings classes
 from crowd_certain.utilities.parameters.settings import (
     Settings,
     ConfigManager,
     DatasetSettings,
     OutputSettings,
-    TechniqueSettings,
-    SimulationSettings
 )
 
 __all__ = [
-    # Settings classes
-    'Settings',
-    'ConfigManager',
-    'DatasetSettings',
-    'OutputSettings',
-    'TechniqueSettings',
-    'SimulationSettings',
-
-    # Base enum class
+    # Enums and parameter classes
     'EnumWithHelpers',
-
-    # All enum types from params
     'DatasetNames',
     'DataModes',
     'UncertaintyTechniques',
@@ -60,13 +41,9 @@ __all__ = [
     'OtherBenchmarkNames',
     'MainBenchmarks',
     'ProposedTechniqueNames',
-    'StrategyNames',
-    'ConfidenceScoreNames',
-    'SimulationMethods',
-
-    # Data classes
-    'ResultType',
-    'WeightType',
-    'Result2Type',
-    'ResultComparisonsType'
+    # Settings classes
+    'Settings',
+    'ConfigManager',
+    'DatasetSettings',
+    'OutputSettings',
 ]

@@ -1,13 +1,18 @@
 """
-Visualization utilities for crowd-certain.
+Visualization utilities for the crowd-certain package.
 
-This module provides classes and functions for visualizing data from crowd-certain
-experiments, including plots, figures, and data analysis tools.
+This module provides visualization tools and functions for the crowd-certain package,
+including plotting functions and dashboard components.
 """
 
-from crowd_certain.utilities._visualization.plots import Aim1_3_Data_Analysis_Results, AIM1_3_Plot
+from crowd_certain.utilities._visualization.plots import *
+from crowd_certain.utilities._visualization.dashboard import *
 
 __all__ = [
-    'Aim1_3_Data_Analysis_Results',
-    'AIM1_3_Plot',
+    # Re-export all from plots and dashboard
+    'plot_confusion_matrix',
+    'plot_roc_curve',
+    'plot_precision_recall_curve',
+    'plot_learning_curve',
+    'plot_reliability_diagram',
 ]

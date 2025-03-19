@@ -17,7 +17,7 @@ PathNoneType: TypeAlias = Union[pathlib.Path, None]
 
 class DatasetSettings(BaseModel):
 	data_mode         : params.DataModes          = params.DataModes.TRAIN
-	path_all_datasets : pathlib.Path       = pathlib.Path('datasets')
+	path_all_datasets : pathlib.Path       		  = pathlib.Path('datasets')
 	dataset_name      : params.DatasetNames       = params.DatasetNames.CHESS
 	datasetNames      : list[params.DatasetNames] = Field(default=None)
 	non_null_samples  : bool               = True

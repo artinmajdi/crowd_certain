@@ -2403,4 +2403,3 @@ class AIM1_3_Plot:
 
 		elif show_markers == 'all':
 			plt.plot(x, y, 'o')
-

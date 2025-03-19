@@ -33,9 +33,28 @@
     "editor.fontSize": 16,
     "pythonPreview.codeFooterDocs.fontSize": 16,
     "pythonPreview.printOutputDocs.fontSize": 14,
-    "python.testing.pytestArgs": [
-        "crowd_certain"
+    "python.analysis.extraPaths": [
+        "./src"
     ],
+    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.importFormat": "absolute",
+    "python.analysis.packageIndexDepths": [
+        {
+            "name": "crowd_certain",
+            "depth": 4
+        }
+    ],
+    "python.testing.pytestEnabled": true,
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.nosetestsEnabled": false,
+    "python.testing.pytestArgs": [
+        "tests"
+    ],
+    "[python]": {
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": true
+        }
+    }
 }

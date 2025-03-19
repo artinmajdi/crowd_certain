@@ -16,7 +16,7 @@ def test_dataset_loader():
     # Create a configuration with required fields
     config = Settings(
         dataset=dict(
-            dataset_name=DatasetNames.IONOSPHERE,
+            dataset_name=DatasetNames.IONOSPHERE.value,
             path_all_datasets=Path('crowd_certain/datasets')
         ),
         simulation=dict(),

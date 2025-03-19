@@ -5,7 +5,7 @@ This example demonstrates how to run a simulation on all available datasets.
 """
 
 from pathlib import Path
-from crowd_certain.utilities.utils import AIM1_3
+from src.crowd_certain.utilities.utils import AIM1_3
 from crowd_certain.utilities.parameters.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques
 from crowd_certain.utilities.parameters.settings import Settings, OutputModes
 

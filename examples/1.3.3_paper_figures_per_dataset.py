@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 from tqdm import tqdm
-from crowd_certain.utilities.utils import AIM1_3, Aim1_3_Data_Analysis_Results
+from src.crowd_certain.utilities.utils import AIM1_3, Aim1_3_Data_Analysis_Results
 
 """ Running Calculations  """
 
@@ -167,5 +167,3 @@ for strategy in ['freq', 'beta']:
 
     path = f'figures/Proposed method comparison to all benchmarks - Dataset {dataset} - {strategy.upper()}.jpg'
     fig.savefig(path, dpi=300)
-
-

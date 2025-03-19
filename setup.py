@@ -18,7 +18,7 @@ with codecs.open(os.path.join(here, "README.md"), encoding="utf-8") as fh:
     long_description = fh.read()
 
 # Read requirements
-with codecs.open(os.path.join(here, "crowd_certain", "config", "requirements.txt"), encoding="utf-8") as fh:
+with codecs.open(os.path.join(here, "requirements.txt"), encoding="utf-8") as fh:
     requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
 
 # Package metadata
@@ -47,14 +47,8 @@ CLASSIFIERS = [
 PACKAGE_DATA = {
     "crowd_certain": [
         "config/*.json",
-        "config/requirements.txt",
-        "config/environment.yml",
-        "docs/**/*",
-        "scripts/**/*",
-        "utilities/**/*",
         "datasets/**/*",
-        "notebooks/**/*",
-        "outputs/**/*",
+        "utilities/**/*",
     ]
 }
 
@@ -94,13 +88,14 @@ setup(
             "h5py>=3.7.0",
         ],
     },
-    packages=find_packages(exclude=["tests*", "docs*"]),
+    packages=find_packages(where="src"),
+    package_dir={"": "src"},
     package_data=PACKAGE_DATA,
     include_package_data=True,
     zip_safe=False,
     entry_points={
         "console_scripts": [
-            "crowd-dashboard=crowd_certain.run_streamlit:main",
+            "crowd-dashboard=crowd_certain.dashboard:main",
         ],
     },
     keywords=[
@@ -114,7 +109,7 @@ setup(
     ],
     project_urls={
         "Bug Tracker": f"{URL}/issues",
-        "Documentation": f"{URL}/blob/main/crowd_certain/docs/README.md",
+        "Documentation": f"{URL}/blob/main/docs/README.md",
         "Source Code": URL,
     },
 )
