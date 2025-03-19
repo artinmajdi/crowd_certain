@@ -2,18 +2,16 @@ import argparse
 import json
 import os
 import pathlib
-import shutil
 import sys
-from typing import Any, TypeAlias, Union, Tuple
+from typing import Any, Union
+
+from pydantic import BaseModel, Field, field_validator
 from typing_extensions import Annotated
-from pydantic import BaseModel, Field
-from pydantic.functional_validators import field_validator
-import sklearn
 
-from crowd_certain.utilities.parameters import params
 from crowd_certain.config import CONFIG_PATH, DEFAULT_CONFIG_DICT
+from crowd_certain.utilities.parameters import params
 
-PathNoneType: TypeAlias = Union[pathlib.Path, None]
+PathNoneType = Union[pathlib.Path, None]
 
 
 class DatasetSettings(BaseModel):

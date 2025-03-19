@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 import scipy
 import seaborn as sns
-import sklearn
 from matplotlib import pyplot as plt
 from scipy.interpolate import make_interp_spline
 from scipy.special import bdtrc
@@ -223,7 +222,7 @@ class AIM1_3:
 		epsilon = np.finfo(float).eps
 		df = df.astype(int)
 
-		df_uncertainties = pd.DataFrame(columns=[l.value for l in self.config.technique.uncertainty_techniques], index=df.index)
+		df_uncertainties = pd.DataFrame(columns=[tech.value for tech in self.config.technique.uncertainty_techniques], index=df.index)
 
 		for tech in self.config.technique.uncertainty_techniques:
 
@@ -299,7 +298,7 @@ class AIM1_3:
 
 		def initialize_consistency():
 			nonlocal consistency
-			upper_level = [l.value for l in self.config.technique.consistency_techniques]
+			upper_level = [tech.value for tech in self.config.technique.consistency_techniques]
 
 			if isinstance(uncertainty, pd.DataFrame):
 				# The use of OrderedDict helps preserving the order of columns.
@@ -476,7 +475,7 @@ class AIM1_3:
 
 				truth = { 'train': pd.DataFrame(), 'test': pd.DataFrame() }
 
-				columns = pd.MultiIndex.from_product([workers_strength.index, [l.value for l in self.config.technique.uncertainty_techniques]], names=['worker', 'uncertainty_technique'])
+				columns = pd.MultiIndex.from_product([workers_strength.index, [tech.value for tech in self.config.technique.uncertainty_techniques]], names=['worker', 'uncertainty_technique'])
 
 				uncertainties = { 'train': pd.DataFrame(columns=columns), 'test': pd.DataFrame(columns=columns) }
 
@@ -763,7 +762,7 @@ class AIM1_3:
 		T1    = self.calculate_consistency( uncertainties )
 		T2    = T1.copy()
 
-		proposed_techniques = [l.value for l in params.ProposedTechniqueNames]
+		proposed_techniques = [tech.value for tech in params.ProposedTechniqueNames]
 		w_hat = pd.DataFrame(index=proposed_techniques, columns=T1.columns, dtype=float)
 		# w_hat2 = pd.Series(index=T1.columns)
 
@@ -1001,13 +1000,18 @@ class AIM1_3:
 			# k = l_alpha.floordiv(1)
 			# n = (l_alpha+u_beta).floordiv(1) - 1
 
-			get_I = lambda row: bdtrc(row['k'], row['n'], 0.5)
+			def get_I(row):
+				return bdtrc(row['k'], row['n'], 0.5)
+
 			out['I'] = out.apply(get_I, axis=1)
+
 			# out['I'] = np.nan
 			# for index in out['n'].index:
 			# 	out['I'][index] = bdtrc(out['k'][index], out['n'][index], 0.5)
 
-			get_F_lambda = lambda row: max(row['I'], 1-row['I'])
+			def get_F_lambda(row):
+				return max(row['I'], 1-row['I'])
+
 			# F = I.copy()
 			# F[I < 0.5] = (1 - F)[I < 0.5]
 			return pd.DataFrame({'F': out.apply(get_F_lambda, axis=1), 'F_pos': out['I']})
@@ -1086,7 +1090,6 @@ class AIM1_3:
 
 			agg_labels = pd.DataFrame(columns=weights.PROPOSED.index, index=preds.index)
 
-			index = pd.MultiIndex.from_product([ ['F', 'F_pos'], params.StrategyNames.values(), preds.index ], names=['F_F_pos', 'strategies', 'indices'])
 			confidence_scores = {}
 
 			metrics = pd.DataFrame(columns=weights.PROPOSED.index, index=params.EvaluationMetricNames.values())
@@ -1775,19 +1778,23 @@ class Aim1_3_Data_Analysis_Results:
 
 			elif metric_name == 'metrics_all_datasets_workers':
 				workers_list = [f'NL{i}' for i in self.config.simulation.workers_list]
+				columns = pd.MultiIndex.from_product(
+					[metrics_list, self.config.dataset.datasetNames, workers_list],
+					names=['metric', 'dataset', 'workers']
+				)
 
-				columns = pd.MultiIndex.from_product([metrics_list, self.config.dataset.datasetNames, workers_list], names=['metric', 'dataset', 'workers'])
-				df = pd.DataFrame(columns=columns)
+				# Create DataFrame using dictionary comprehension
+				data = {
+					(metric, dt, nl): drop_proposed_rename_crowd_certain(
+						get_metrics_mean_over_seeds(dt, nl),
+						orient='index'
+					)[metric]
+					for dt in self.config.dataset.datasetNames
+					for nl in workers_list
+					for metric in metrics_list
+				}
 
-				for dt in self.config.dataset.datasetNames:
-					for nl in workers_list:
-						df_temp = get_metrics_mean_over_seeds(dt, nl)
-						df_temp = drop_proposed_rename_crowd_certain(df_temp, orient='index')
-
-						for metric in metrics_list:
-							df[(metric, dt, nl)] = df_temp[metric].copy()
-
-				return df
+				return pd.DataFrame(data, columns=columns)
 
 		raise ValueError(f"Invalid metric name: {metric_name}")
 
@@ -1887,12 +1894,14 @@ class Aim1_3_Data_Analysis_Results:
 		if metric_name == 'F_eval_one_dataset_all_workers':
 			target_list = [f'NL{x}' for x in self.config.simulation.workers_list]
 			target_name = 'n_workers'
-			get_params = lambda i: dict(nl=i, dataset_name=dataset_name)
+			def get_params(i):
+				return dict(nl=i, dataset_name=dataset_name)
 
 		elif metric_name == 'F_eval_one_worker_all_datasets':
 			target_list = self.config.dataset.datasetNames
 			target_name = 'dataset_name'
-			get_params = lambda i: dict(nl=nl, dataset_name=i)
+			def get_params(i):
+				return dict(nl=nl, dataset_name=i)
 
 		else:
 			raise ValueError('metric_name should be either workers or datasets')
@@ -2276,7 +2285,7 @@ class AIM1_3_Plot:
 	def __init__(self, plot_data: pd.DataFrame):
 
 		self.weight_strength_relation_interpolated = None
-		assert type(plot_data) == pd.DataFrame, 'plot_data must be a pandas DataFrame'
+		assert isinstance(plot_data, pd.DataFrame), 'plot_data must be a pandas DataFrame'
 
 		self.plot_data = plot_data
 

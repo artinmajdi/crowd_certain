@@ -10,5 +10,12 @@
 		"notebook.output.lineHeight": 0,
 		"hide-files.files": [],
 		"liveServer.settings.multiRootWorkspaceName": "crowd"
+	},
+	"launch": {
+		"version": "0.2.0",
+		"configurations": [
+
+
+		]
 	}
 }
