@@ -1751,7 +1751,6 @@ class Aim1_3_Data_Analysis_Results:
 
 			return wwr
 
-
 		elif metric_name in ['F', 'aggregated_labels','true_labels']:
 
 			if metric_name == 'F':
@@ -1790,6 +1789,7 @@ class Aim1_3_Data_Analysis_Results:
 
 				return df
 
+		raise ValueError(f"Invalid metric name: {metric_name}")
 
 	def get_evaluation_metrics_for_confidence_scores(self, metric_name='F_eval_one_dataset_all_workers', dataset_name: params.DatasetNames=params.DatasetNames.IONOSPHERE, nl='NL3'):
 		"""
@@ -2063,7 +2063,7 @@ class Aim1_3_Data_Analysis_Results:
 		self.save_outputs( filename=f'figure_{metric_name}_{metric}', relative_path=relative_path, dataframe=df )
 
 
-	def figure_metrics_all_datasets_workers(self, workers_list: list[str]=None, figsize=(15, 15), font_scale=1.8, fontsize=20, relative_path='final_figures'):
+	def figure_metrics_all_datasets_workers(self, workers_list: Optional[list[str]]=None, figsize=(15, 15), font_scale=1.8, fontsize=20, relative_path='final_figures'):
 		"""
 		Generate boxplots of evaluation metrics (Accuracy, AUC, F1) for all datasets across specified workers.
 
@@ -2096,6 +2096,9 @@ class Aim1_3_Data_Analysis_Results:
 		visualization and the underlying data.
 		"""
 
+		if workers_list is None:
+			workers_list = [f'NL{i}' for i in self.config.simulation.workers_list]
+
 		def get_axes(ix1, ix2):
 			nonlocal axes
 			if len(workers_list) == 1 or len(metrics_list) == 1:
@@ -2103,16 +2106,13 @@ class Aim1_3_Data_Analysis_Results:
 			else:
 				return axes[ix1, ix2]
 
-
-		if workers_list is None:
-			workers_list = [f'NL{i}' for i in self.config.simulation.workers_list]
-
-		sns.set(font_scale=font_scale, palette='colorblind', style='darkgrid', context='paper')
+		sns.set_theme(font_scale=font_scale, palette='colorblind', style='darkgrid', context='paper')
 
 		metric_name  = 'metrics_all_datasets_workers'
-		metrics_list = [params.EvaluationMetricNames.ACC, params.EvaluationMetricNames.AUC, params.EvaluationMetricNames.F1]
+		emn = params.EvaluationMetricNames
+		metrics_list = [emn.ACC, emn.AUC, emn.F1]
 
-		df: pd.DataFrame = self.get_result(metric_name=metric_name) # type: ignore
+		df: pd.DataFrame = self.get_result(metric_name=metric_name)
 		df = df.swaplevel(axis=1, i=1, j=2)
 
 		fig, axes = plt.subplots(nrows=len(workers_list), ncols=len(metrics_list), figsize=figsize, sharex=True, sharey=True, squeeze=True)

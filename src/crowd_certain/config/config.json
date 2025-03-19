@@ -26,10 +26,10 @@
         ],
         "high_dis": 1.0,
         "low_dis": 0.4,
-        "num_simulations": 5,
+        "num_simulations": 3,
         "num_seeds": 3,
         "use_parallelization": true,
-        "max_parallel_workers": 6,
+        "max_parallel_workers": 12,
         "simulation_methods": "random_states"
     },
     "technique": {

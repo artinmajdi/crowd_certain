@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import pathlib
 import shutil
 import sys
@@ -77,18 +78,22 @@ class TechniqueSettings(BaseModel):
 
 
 class SimulationSettings(BaseModel):
-	n_workers_min_max   : list[int] = [3,8]
-	high_dis            : float     = 1
-	low_dis             : float     = 0.4
-	num_simulations     : int       = 10
-	num_seeds           : int       = 3
-	use_parallelization: bool       = True
-	max_parallel_workers: int = 10
+	n_workers_min_max    : list[int] = [3,8]
+	high_dis             : float     = 1
+	low_dis              : float     = 0.4
+	num_simulations      : int       = 10
+	num_seeds            : int       = 3
+	use_parallelization  : bool      = True
+	max_parallel_workers : int       = 10
 	simulation_methods: params.SimulationMethods = params.SimulationMethods.RANDOM_STATES
 
 	@property
 	def workers_list(self):
 		return list(range(*self.n_workers_min_max))
+
+	@field_validator('max_parallel_workers', mode='after')
+	def max_parallel_workers_validator(cls, v: int):
+		return min(os.cpu_count() or 4, v)
 
 
 class Settings(BaseModel):

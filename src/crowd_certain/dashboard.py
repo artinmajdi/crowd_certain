@@ -142,10 +142,7 @@ class SidebarConfig:
     def revert_to_default_config_dashboard(self):
         """Revert to the default configuration."""
         try:
-            success, config_path = ConfigManager.revert_to_default_config()
-
-            if not success:
-                return False, f"Failed to revert to default configuration"
+            ConfigManager.revert_to_default_config()
 
             # Reload the configuration
             self.config = ConfigManager.get_settings()
@@ -332,6 +329,7 @@ class SidebarConfig:
             )
 
             if self.use_parallelization:
+
                 self.max_parallel_workers = st.number_input(
                     "Maximum Parallel Workers",
                     min_value=1,
@@ -573,10 +571,14 @@ class ResultsTab:
             second_options = sorted({key[1] for key in confidence_scores.keys()})
             third_options  = sorted({key[2] for key in confidence_scores.keys()})
 
-            # Create three dropdown menus for each element of the tuple key
-            selected_first  = st.selectbox("Select first element", first_options)
-            selected_second = st.selectbox("Select second element", second_options)
-            selected_third  = st.selectbox("Select third element", third_options)
+            col1,col2,col3 =  st.columns(3)
+
+            with col1:
+                selected_first  = st.radio("Select first element", options=first_options, index=0)
+            with col2:
+                selected_second = st.radio("Select second element", options=second_options, index=0)
+            with col3:
+                selected_third  = st.radio("Select third element", options=third_options, index=0)
 
             # Build the selected key tuple from the dropdown values
             selected_key = (selected_first, selected_second, selected_third)
