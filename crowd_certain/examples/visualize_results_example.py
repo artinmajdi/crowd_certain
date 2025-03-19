@@ -13,7 +13,7 @@ from pathlib import Path
 import pandas as pd
 
 from crowd_certain.utilities.utils import AIM1_3, Settings, DatasetNames
-from crowd_certain.utilities.params import UncertaintyTechniques, ConsistencyTechniques
+from crowd_certain.utilities.config.params import UncertaintyTechniques, ConsistencyTechniques
 
 
 def run_simulation_for_visualization():

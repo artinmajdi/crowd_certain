@@ -1,6 +1,6 @@
 from crowd_certain.utilities import utils
-from crowd_certain.utilities.settings import get_settings
-from crowd_certain.utilities.params import DatasetNames
+from crowd_certain.utilities.config.settings import get_settings
+from crowd_certain.utilities.config.params import DatasetNames
 import cProfile
 import pstats
 

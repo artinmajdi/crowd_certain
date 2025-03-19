@@ -17,10 +17,10 @@ from matplotlib import pyplot as plt
 from scipy.interpolate import make_interp_spline
 from scipy.special import bdtrc
 from sklearn import ensemble as sk_ensemble, metrics as sk_metrics
-from crowd_certain.utilities import dataset_loader
-from crowd_certain.utilities import params
-from crowd_certain.utilities.settings import Settings
-from crowd_certain.utilities.hdf5_storage import HDF5Storage
+from crowd_certain.utilities.data_loader import dataset_loader
+from crowd_certain.utilities.config import params
+from crowd_certain.utilities.config.settings import Settings
+from crowd_certain.utilities.data_loader.hdf5_storage import HDF5Storage
 
 
 USE_HD5F_STORAGE = True

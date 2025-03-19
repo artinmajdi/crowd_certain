@@ -4,9 +4,9 @@ Test script for the updated DatasetNames class and load_dataset function.
 
 import pytest
 from crowd_certain.utilities.utils import AIM1_3
-from crowd_certain.utilities.settings import Settings
-from crowd_certain.utilities.params import DatasetNames
-from crowd_certain.utilities import dataset_loader
+from crowd_certain.utilities.config.settings import Settings
+from crowd_certain.utilities.config.params import DatasetNames
+from crowd_certain.utilities.data_loader import dataset_loader
 from pathlib import Path
 
 def test_dataset_loader():

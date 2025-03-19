@@ -11,7 +11,7 @@ import os
 import shutil
 from pathlib import Path
 
-from crowd_certain.utilities.settings import find_config_file, revert_to_default_config
+from crowd_certain.utilities.config.settings import find_config_file, revert_to_default_config
 
 def test_find_config_file():
     """Test the find_config_file function."""

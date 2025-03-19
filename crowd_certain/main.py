@@ -9,8 +9,8 @@ import sys
 from pathlib import Path
 
 from crowd_certain.utilities.utils import AIM1_3
-from crowd_certain.utilities import params
-from crowd_certain.utilities.settings import Settings, OutputModes
+from crowd_certain.utilities.config import params
+from crowd_certain.utilities.config.settings import Settings, OutputModes
 
 
 def parse_args():

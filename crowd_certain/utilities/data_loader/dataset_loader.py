@@ -4,10 +4,10 @@ import pathlib
 import os
 from typing import Dict, List, Tuple, Union
 from sklearn import preprocessing
-from crowd_certain.utilities.params import DatasetNames
+from crowd_certain.utilities.config.params import DatasetNames
 from ucimlrepo import fetch_ucirepo, list_available_datasets
 
-from crowd_certain.utilities.settings import Settings
+from crowd_certain.utilities.config.settings import Settings
 
 class Dict2Class(object):
     def __init__(self, my_dict):
