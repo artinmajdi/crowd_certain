@@ -100,7 +100,7 @@ setup(
     zip_safe=False,
     entry_points={
         "console_scripts": [
-            "crowd-certain=crowd_certain.run_streamlit:main",
+            "crowd-dashboard=crowd_certain.run_streamlit:main",
         ],
     },
     keywords=[

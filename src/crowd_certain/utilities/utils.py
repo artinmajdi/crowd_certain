@@ -16,6 +16,7 @@ from scipy.special import bdtrc
 from sklearn import ensemble as sk_ensemble, metrics as sk_metrics
 
 # Local imports
+from crowd_certain.utilities.benchmarks import BenchmarkTechniques
 from crowd_certain.utilities.parameters import params
 from crowd_certain.utilities.parameters.settings import Settings
 from crowd_certain.utilities.io import dataset_loader
@@ -1104,7 +1105,6 @@ class AIM1_3:
 			v_benchmarks = pd.concat( [v_benchmarks, v_other_benchmarks], axis=1)
 
 			# Measuring the metrics
-
 			metrics_benchmarks = pd.DataFrame({cln: AIM1_3.get_AUC_ACC_F1(aggregated_labels=v_benchmarks[cln], truth=true_labels['test'].truth) for cln in v_benchmarks.columns})
 
 			return params.ResultType(aggregated_labels=v_benchmarks, confidence_scores=F_benchmarks, metrics=metrics_benchmarks)

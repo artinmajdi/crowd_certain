@@ -105,18 +105,71 @@ crowd-certain/
 │   │   ├── environment.yml # Conda environment specification
 │   │   ├── activate_env.sh # Unix environment activation script
 │   │   └── activate.bat # Windows environment activation script
+│   ├── dashboard_components/ # Dashboard UI components
+│   │   ├── aim1_3.py    # Aim 1.3 dashboard components
+│   │   ├── confidence_scoring.py # Confidence scoring UI
+│   │   ├── metrics.py   # Metrics visualization
+│   │   ├── orchestrator.py # Dashboard orchestration
+│   │   ├── uncertainty.py # Uncertainty visualization
+│   │   ├── weighting_schemes.py # Weight schemes UI
+│   │   └── worker_simulation.py # Worker simulation UI
 │   ├── datasets/        # Dataset handling
+│   │   ├── anneal/      # Anneal dataset
+│   │   ├── biodeg/      # Biodeg dataset
+│   │   ├── breast-cancer/ # Breast cancer dataset
+│   │   ├── ionosphere/  # Ionosphere dataset
+│   │   ├── iris/        # Iris dataset
+│   │   └── [30+ more datasets] # Various UCI datasets
 │   ├── docs/            # Documentation
+│   │   ├── API.md       # API reference
+│   │   ├── DASHBOARD.md # Dashboard documentation
+│   │   ├── EXAMPLES.md  # Example scripts documentation
+│   │   ├── INSTALLATION.md # Installation guide
+│   │   ├── README.md    # Documentation overview
+│   │   ├── STREAMLIT_TO_WEB.md # Streamlit deployment guide
+│   │   ├── UCI_ML_REPO.md # UCI ML repository info
+│   │   ├── USAGE.md     # Usage documentation
+│   │   └── WEB_DEV.md   # Web development guide
 │   ├── examples/        # Example scripts
+│   │   ├── 1.3.3_paper_figures_per_dataset.py # Paper figure generation
+│   │   ├── 1.3.4_paper_figures_final.py # Final paper figures
+│   │   ├── all_datasets_example.py # Multiple dataset example
+│   │   ├── custom_techniques_example.py # Custom techniques
+│   │   ├── run_dashboard_example.py # Dashboard launch example
+│   │   ├── save_load_results_example.py # Saving results
+│   │   ├── single_dataset_example.py # Single dataset example
+│   │   └── visualize_results_example.py # Visualization example
 │   ├── notebooks/       # Jupyter notebooks
+│   │   ├── 1.3.1 detailed-subversion.ipynb # Detailed analysis
+│   │   ├── 1.3.2 weight_worker_strength_comparison.ipynb # Weight comparison
+│   │   ├── 1.3.4_paper_figures_final.ipynb # Paper figures
+│   │   └── old_experiments/ # Previous experiments
 │   ├── outputs/         # Output files
+│   │   ├── confidence_score/ # Confidence scoring outputs
+│   │   ├── final_figures/ # Final figure outputs
+│   │   ├── findings_comparisons/ # Comparative findings
+│   │   ├── outputs/ # General outputs
+│   │   └── weight_strength_relation/ # Weight-strength analysis
 │   ├── scripts/         # Installation and utility scripts
 │   │   ├── install.sh   # Unix installation script
 │   │   ├── install.bat  # Windows installation script
 │   │   ├── run_dashboard.sh # Unix dashboard script
-│   │   └── run_dashboard.bat# Windows dashboard script
+│   │   ├── run_dashboard.bat # Windows dashboard script
+│   │   └── test_reorganization.sh # Test organization script
 │   └── utilities/       # Utility functions and classes
-│       └── dashboard.py # Streamlit dashboard
+│       ├── dashboard.py # Streamlit dashboard
+│       └── [additional utility files]
+├── tests/               # Unit and integration tests
+│   ├── conftest.py      # Test configuration
+│   ├── test_config_functions.py # Configuration tests
+│   ├── test_dataset_loader.py # Dataset loader tests
+│   ├── test_multiple_datasets.py # Multiple dataset tests
+│   ├── test_params.py  # Parameter tests
+│   ├── test_settings.py # Settings tests
+│   └── test_utils.py   # Utility tests
+├── crowd_certain.egg-info/ # Package metadata
+├── setup.py            # Package setup script
+└── pyproject.toml      # Project configuration
 ```
 
 For more information about the example scripts, see the [Examples Documentation](crowd_certain/docs/EXAMPLES.md).

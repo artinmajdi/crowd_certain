@@ -10,6 +10,7 @@ from pydantic.functional_validators import field_validator
 import sklearn
 
 from crowd_certain.utilities.parameters import params
+from crowd_certain.config import CONFIG_DIR
 
 PathNoneType: TypeAlias = Union[pathlib.Path, None]
 
@@ -157,13 +158,15 @@ class ConfigManager:
 
 	@staticmethod
 	def find_config_file(config_path: Union[str, pathlib.Path] = None,
-						debug: bool = False) -> pathlib.Path:
+						debug: bool = False,
+						find_default_config: bool = False) -> pathlib.Path:
 		"""
 		Find the config.json file in the project.
 
 		Args:
 			config_path: Specific config path to check first (optional)
 			debug: Whether to print debug information
+			find_default_config: Whether to find the default config file instead of the regular config file
 
 		Returns:
 			Path to the config.json file (or config_default.json if find_default_config is True)
@@ -172,8 +175,14 @@ class ConfigManager:
 		Raises:
 			FileNotFoundError: If no config file is found and raise_error is True
 		"""
-		# For regular config.json, continue with the normal search process
+		# For default config case, return the fixed location
+		if find_default_config:
+			default_config_path = CONFIG_DIR / "config_default.json"
+			if debug:
+				print(f"Looking for default config at fixed location: {default_config_path}")
+			return default_config_path
 
+		# For regular config.json, continue with the normal search process
 		# If a specific config path is provided, check it first
 		if config_path is not None:
 
@@ -196,6 +205,9 @@ class ConfigManager:
 
 		# Check multiple possible locations for the config file
 		possible_locations = [
+				# Config directory using CONFIG_DIR
+			CONFIG_DIR / 'config.json',
+
 			# Current directory
 			pathlib.Path.cwd() / 'config.json',
 
@@ -222,7 +234,7 @@ class ConfigManager:
 				print(f"Config file not found at: {location}")
 
 		# If no config file is found, return a default path
-		default_location = pathlib.Path(__file__).parents[1] / 'config.json'
+		default_location = CONFIG_DIR / 'config.json'
 		if debug:
 			print(f"No config file found. Using default location: {default_location}")
 
@@ -243,17 +255,15 @@ class ConfigManager:
 				- success: Boolean indicating whether the operation was successful
 				- path: Path where the config was copied to or should have been copied to
 		"""
-		# Get the default config file from the fixed location
-		default_config_path = pathlib.Path(__file__).parents[1] / "config" / "config_default.json"
-
+		# Get the default config file from the fixed location using CONFIG_DIR
+		default_config_path = CONFIG_DIR / "config_default.json"
 		if debug:
 			print(f"Using default config from fixed location: {default_config_path}")
 
 		# Determine the target path for the config file
 		if config_path is None:
-			# Use the main project directory for the config file
-			config_path = pathlib.Path(__file__).parents[1] / 'config.json'
-
+			# Use the CONFIG_DIR for the config file
+			config_path = CONFIG_DIR / 'config.json'
 		else:
 			config_path = pathlib.Path(config_path)
 			if config_path.is_dir():

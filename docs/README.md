@@ -28,6 +28,25 @@ The framework is particularly useful for researchers and practitioners working w
 - **Evaluation Metrics**: Calculate AUC, accuracy, and F1 score for different aggregation methods
 - **Visualization Tools**: Analyze and visualize the relationship between worker strength and label quality
 
+## Project Structure
+
+The project is organized in a modular structure with the following key components:
+
+```bash
+crowd_certain/
+├── config/               # Configuration files
+├── dashboard_components/ # Dashboard UI components for different sections
+├── datasets/             # UCI ML and other datasets (30+ datasets)
+├── docs/                 # Documentation files
+├── examples/             # Example scripts demonstrating library usage
+├── notebooks/            # Jupyter notebooks with analyses and experiments
+├── outputs/              # Output files from simulations and experiments
+├── scripts/              # Installation and utility scripts
+└── utilities/            # Core utilities and helper functions
+```
+
+See the main [README.md](../README.md) for a more detailed structure.
+
 ## Applications
 
 Crowd-Certain is designed for applications where multiple annotators provide labels for the same data, such as:
@@ -42,6 +61,10 @@ Crowd-Certain is designed for applications where multiple annotators provide lab
 - [Installation Guide](INSTALLATION.md)
 - [Usage Examples](USAGE.md)
 - [API Reference](API.md)
+- [Dashboard Guide](DASHBOARD.md)
+- [UCI ML Repository Information](UCI_ML_REPO.md)
+- [Web Development](WEB_DEV.md)
+- [Streamlit to Web Deployment](STREAMLIT_TO_WEB.md)
 
 ## Citation
 

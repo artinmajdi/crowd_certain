@@ -1,17 +1,19 @@
 {
     "files.exclude": {
-        "**/.git": true,
-        "**/.svn": true,
-        "**/.hg": true,
-        "**/CVS": true,
-        "**/.DS_Store": true,
-        "**/Thumbs.db": true,
-        "crowd_certain/utilities/__pycache__": true,
-        "requirements.yml": true,
-        "requirements.txt": true,
-        "needs_profiling.prof": true,
-        "setup.py": true,
-        ".gitignore": true
+        "**/.git": false,
+        "**/.svn": false,
+        "**/.hg": false,
+        "**/CVS": false,
+        "**/.DS_Store": false,
+        "**/Thumbs.db": false,
+        "crowd_certain/utilities/__pycache__": false,
+        "requirements.yml": false,
+        "requirements.txt": false,
+        "needs_profiling.prof": false,
+        "setup.py": false,
+        ".gitignore": false,
+        ".git": false,
+        ".DS_Store": false
     },
     "hide-files.files": [
         "crowd_certain/utilities/__pycache__",
@@ -19,7 +21,9 @@
         "requirements.txt",
         "needs_profiling.prof",
         "setup.py",
-        ".gitignore"
+        ".gitignore",
+        ".git",
+        ".DS_Store"
     ],
     "editor.inlineSuggest.showToolbar": "always",
     "debug.console.fontSize": 16,

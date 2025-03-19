@@ -568,9 +568,23 @@ class ResultsTab:
         # Create tabs for each confidence score method
         if confidence_scores:
             # Add debug information
-            st.write("Confidence score keys types:", [type(key).__name__ for key in confidence_scores.keys()])
+            # st.write("Confidence score keys types:", [type(key).__name__ for key in confidence_scores.keys()])
 
             # Convert keys to strings to avoid StreamlitAPIException
+
+            # Debug the confidence_scores structure
+            st.subheader("Debugging confidence_scores")
+            st.write("Type:", type(confidence_scores))
+            st.write("Keys:", list(confidence_scores.keys()))
+            st.write("Key types:", [type(key).__name__ for key in confidence_scores.keys()])
+
+            # Show a sample of the data structure
+            if confidence_scores:
+                first_key = list(confidence_scores.keys())[0]
+                st.write(f"Sample for first key ({first_key}):")
+                st.write("Type:", type(confidence_scores[first_key]))
+                st.write("Preview:", confidence_scores[first_key].head())
+
             confidence_tabs = st.tabs([str(key) for key in confidence_scores.keys()])
 
             for i, (method, scores) in enumerate(confidence_scores.items()):
