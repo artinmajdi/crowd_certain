@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from scipy.special import bdtrc
 
-from crowd_certain.utilities.config import params
+from crowd_certain.utilities.parameters import params
 
 class ConfidenceScorer:
     """

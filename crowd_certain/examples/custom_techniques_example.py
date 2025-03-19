@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from crowd_certain.utilities.utils import AIM1_3
-from crowd_certain.utilities.config.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques
-from crowd_certain.utilities.config.settings import Settings, OutputModes
+from crowd_certain.utilities.parameters.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques
+from crowd_certain.utilities.parameters.settings import Settings, OutputModes
 
 
 def run_with_all_techniques():

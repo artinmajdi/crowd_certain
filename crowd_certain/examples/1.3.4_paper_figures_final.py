@@ -1,9 +1,9 @@
 from crowd_certain.utilities import utils
-from crowd_certain.utilities.config.settings import get_settings
+from crowd_certain.utilities.parameters.settings import ConfigManager
 
 def main():
 
-	config = get_settings()
+	config = ConfigManager.get_settings()
 
 	aim1_3 = utils.Aim1_3_Data_Analysis_Results(config=config).update()
 

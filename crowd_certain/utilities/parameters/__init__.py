@@ -5,8 +5,8 @@ This module provides configuration classes, parameter definitions, and
 settings handling for the crowd-certain package.
 """
 
-from crowd_certain.utilities.config.params import *
-from crowd_certain.utilities.config.settings import get_settings, Settings
+from crowd_certain.utilities.parameters.params import *
+from crowd_certain.utilities.parameters.settings import get_settings, Settings
 
 __all__ = [
     'Settings',

@@ -2,13 +2,15 @@
 # @functools.cache
 import functools
 import multiprocessing
-from typing import Callable, Dict, Tuple
+from typing import Dict, Tuple
 
 import numpy as np
 import pandas as pd
-from crowd_certain.utilities.config import params
+from crowd_certain.utilities.parameters import params
+from crowdkit import aggregation as crowdkit_aggregation
 
 
+# @functools.cache
 class BenchmarkTechniques:
 	"""
 	A utility class to apply and evaluate various crowdsourcing benchmark techniques from the crowdkit library.
@@ -54,7 +56,7 @@ class BenchmarkTechniques:
 		crowd_labels_original (dict): Backup of the original crowd labels
 	"""
 
-	def __init__(self, crowd_labels: Dict[str, pd.DataFrame], ground_truth: Dict[str, pd.DataFrame]):
+	def __init__(self, crowd_labels: Dict, ground_truth: Dict) -> None:
 		"""
 		Initialize the BenchmarkTechniques class with crowd labels and ground truth.
 
@@ -249,7 +251,7 @@ class BenchmarkTechniques:
 
 
 	@staticmethod
-	def objective_function(test: pd.DataFrame, test_unique: np.ndarray) -> Callable[[params.OtherBenchmarkNames], Tuple[params.OtherBenchmarkNames, np.ndarray]]:
+	def objective_function(test, test_unique):
 		"""
 		Create a partial function for applying benchmark techniques to specific test data.
 
@@ -267,7 +269,7 @@ class BenchmarkTechniques:
 
 
 	@classmethod
-	def apply(cls, true_labels: Dict[str, pd.DataFrame], use_parallelization_benchmarks: bool) -> pd.DataFrame:
+	def apply(cls, true_labels, use_parallelization_benchmarks) -> pd.DataFrame:
 		"""
 		Apply all benchmark techniques to the provided labeled data.
 
@@ -286,7 +288,7 @@ class BenchmarkTechniques:
 		return cls(crowd_labels=crowd_labels, ground_truth=ground_truth).calculate(use_parallelization_benchmarks)
 
 
-	def calculate(self, use_parallelization_benchmarks: bool) -> pd.DataFrame:
+	def calculate(self, use_parallelization_benchmarks) ->  pd.DataFrame:
 		"""
 		Calculate aggregated labels using all benchmark techniques.
 
@@ -318,7 +320,7 @@ class BenchmarkTechniques:
 
 
 	@staticmethod
-	def reshape_dataframe_into_this_sdk_format(df_predicted_labels: pd.DataFrame) -> pd.DataFrame:
+	def reshape_dataframe_into_this_sdk_format(df_predicted_labels):
 		"""
 		Preprocess data to match the crowdkit SDK format.
 

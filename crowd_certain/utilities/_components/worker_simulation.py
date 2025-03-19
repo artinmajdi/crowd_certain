@@ -10,7 +10,7 @@ import pandas as pd
 from typing import Dict, Tuple
 
 from sklearn import ensemble as sk_ensemble
-from crowd_certain.utilities.config import params
+from crowd_certain.utilities.parameters import params
 
 class WorkerSimulator:
     """
@@ -208,7 +208,7 @@ class WorkerSimulator:
                 )
 
                 # Get uncertainties for this worker using the UncertaintyCalculator
-                from crowd_certain.utilities.components.uncertainty import UncertaintyCalculator
+                from crowd_certain.utilities._components.uncertainty import UncertaintyCalculator
                 calculator = UncertaintyCalculator(self.config)
                 uncertainties[mode][worker] = calculator.calculate_uncertainties(
                     df=predicted_labels_all_sims[mode][worker]

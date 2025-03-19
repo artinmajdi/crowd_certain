@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 from typing import Dict, Tuple, Union
 
-from crowd_certain.utilities.config import params
-from crowd_certain.utilities.components.uncertainty import calculate_consistency
+from crowd_certain.utilities.parameters import params
+from crowd_certain.utilities._components.uncertainty import calculate_consistency
 
 class WeightingSchemes:
     """

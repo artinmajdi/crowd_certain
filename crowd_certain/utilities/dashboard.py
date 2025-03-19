@@ -16,10 +16,10 @@ import seaborn as sns
 import streamlit as st
 
 # Local imports
-from crowd_certain.utilities.config import params
-from crowd_certain.utilities.config.settings import Settings, find_config_file, get_settings, revert_to_default_config
-from crowd_certain.utilities.data_loader.dataset_loader import find_dataset_path
-from crowd_certain.utilities.utils import AIM1_3, ResultComparisonsType
+from crowd_certain.utilities.parameters import params
+from crowd_certain.utilities.parameters.settings import Settings, ConfigManager
+from crowd_certain.utilities.io.dataset_loader import find_dataset_path
+from crowd_certain.utilities.utils import AIM1_3
 
 class DashboardStyles:
     """Manages CSS styles for the dashboard."""
@@ -64,7 +64,7 @@ class SidebarConfig:
         """Initialize the sidebar configuration from existing config if available."""
         # Load existing configuration if available
         try:
-            self.config = get_settings()
+            self.config = ConfigManager.get_settings()
             # print("Loaded existing configuration from config.json")
 
         except Exception as e:
@@ -128,7 +128,7 @@ class SidebarConfig:
 
         # Determine the file path
         if config_path is None:
-            config_path = find_config_file(config_path=config_path)
+            config_path = ConfigManager.find_config_file(config_path=config_path)
 
         # Save the configuration
         try:
@@ -138,17 +138,16 @@ class SidebarConfig:
         except Exception as e:
             return False, f"Error saving configuration: {str(e)}"
 
-    def revert_to_default_config(self):
+    def revert_to_default_config_dashboard(self):
         """Revert to the default configuration."""
         try:
-            # Use the revert_to_default_config function
-            success, config_path = revert_to_default_config()
+            success, config_path = ConfigManager.revert_to_default_config()
 
             if not success:
                 return False, f"Failed to revert to default configuration"
 
             # Reload the configuration
-            self.config = get_settings()
+            self.config = ConfigManager.get_settings()
 
             # Update UI values from the new config
             self.selected_dataset_values = [str(ds) for ds in self.config.dataset.datasetNames]
@@ -365,7 +364,7 @@ class SidebarConfig:
         # Revert to Default button
         with col2:
             if st.button("Revert to Default", type="secondary"):
-                success, message = self.revert_to_default_config()
+                success, message = self.revert_to_default_config_dashboard()
                 if success:
                     st.success(message)
                 else:
@@ -456,7 +455,7 @@ class SimulationRunner:
 
                 # Run the simulation for this dataset
                 try:
-                    results: ResultComparisonsType = AIM1_3.calculate_one_dataset(config=settings, dataset_name=dataset_name)
+                    results: params.ResultComparisonsType = AIM1_3.calculate_one_dataset(config=settings, dataset_name=dataset_name)
 
                     # Store results for this dataset
                     st.session_state.results_by_dataset[dataset_value] = results

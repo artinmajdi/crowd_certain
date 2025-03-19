@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 from sklearn import metrics as sk_metrics
 
-from crowd_certain.utilities.config import params
+from crowd_certain.utilities.parameters import params
 
 class MetricsCalculator:
     """

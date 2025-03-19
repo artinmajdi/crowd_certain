@@ -1,7 +1,6 @@
 # Standard library imports
 import functools
 import multiprocessing
-import pickle
 from collections import defaultdict, OrderedDict
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Tuple, Union
@@ -16,433 +15,14 @@ from scipy.interpolate import make_interp_spline
 from scipy.special import bdtrc
 from sklearn import ensemble as sk_ensemble, metrics as sk_metrics
 
-# Crowdkit imports
-from crowdkit import aggregation as crowdkit_aggregation
-
 # Local imports
-from crowd_certain.utilities.config import params
-from crowd_certain.utilities.config.settings import Settings
-from crowd_certain.utilities.data_loader import dataset_loader
-from crowd_certain.utilities.data_loader.hdf5_storage import HDF5Storage
-
+from crowd_certain.utilities.parameters import params
+from crowd_certain.utilities.parameters.settings import Settings
+from crowd_certain.utilities.io import dataset_loader
+from crowd_certain.utilities.io.hdf5_storage import HDF5Storage
+from crowd_certain.utilities.io.dataset_loader import LoadSaveFile
 
 USE_HD5F_STORAGE = True
-
-class LoadSaveFile:
-	"""
-	A utility class for loading and saving files with different formats.
-
-	This class provides a simple interface to load and save files with extensions
-	such as .pkl, .csv, and .xlsx, handling the appropriate serialization format
-	automatically based on the file extension.
-
-	Parameters
-	----------
-	path : pathlib.Path or str
-		The file path where the file should be loaded from or saved to.
-
-	Methods
-	-------
-	load(index_col=None, header=None)
-		Load a file from the specified path based on its extension.
-
-	dump(file, index=False)
-		Save a file to the specified path based on its extension.
-	"""
-	def __init__(self, path):
-		self.path = path
-
-	def load(self, index_col=None, header=None):
-		if self.path.exists():
-			if self.path.suffix == '.pkl':
-				with open(self.path, 'rb') as f:
-					return pickle.load(f)
-			elif self.path.suffix == '.csv':
-				return pd.read_csv(self.path)
-			elif self.path.suffix == '.xlsx':
-				return pd.read_excel(self.path, index_col=index_col, header=header)
-		return None
-
-	def dump(self, file, index=False):
-		self.path.parent.mkdir(parents=True, exist_ok=True)
-		if self.path.suffix == '.pkl':
-			with open(self.path, 'wb') as f:
-				pickle.dump(file, f)
-		elif self.path.suffix == '.csv':
-			file.to_csv(self.path, index=index)
-		elif self.path.suffix == '.xlsx':
-			file.to_excel(self.path, index=index)
-
-
-# @functools.cache
-class BenchmarkTechniques:
-	"""
-	A utility class to apply and evaluate various crowdsourcing benchmark techniques from the crowdkit library.
-
-	This class provides functionality to aggregate crowd-sourced labels using different benchmark algorithms,
-	format data for compatibility with the crowdkit library, and evaluate the performance of these techniques.
-	It supports parallel processing for improved performance when applying multiple techniques.
-
-	Key Features:
-	- Support for multiple benchmark techniques (MajorityVote, MACE, MMSR, Wawa, ZeroBasedSkill, GLAD, DawidSkene, KOS)
-	- Exception handling to gracefully manage technique failures
-	- Parallel processing option for improved performance
-	- Data preprocessing to convert between different formats
-
-	Methods:
-		__init__                              : Initialize with crowd labels and ground truth
-		get_techniques                        : Apply a specific benchmark technique to the test data
-		wrapper                               : Wrapper function to apply a benchmark technique and return its name with results
-		objective_function                    : Create a partial function for applying benchmark techniques to specific test data
-		apply                                 : Apply all benchmark techniques to the provided labeled data
-		calculate                             : Calculate aggregated labels using all benchmark techniques
-		reshape_dataframe_into_this_sdk_format: Preprocess data to match the crowdkit SDK format
-
-	Usage:
-		# Create instance with crowd labels and ground truth
-		benchmarks = BenchmarkTechniques(crowd_labels=crowd_data, ground_truth=ground_truth)
-
-		# Calculate results from all benchmark techniques
-		results = benchmarks.calculate(use_parallelization_benchmarks=True)
-
-		# Or use the class method directly
-		results = BenchmarkTechniques.apply(true_labels, use_parallelization_benchmarks=True)
-
-	A utility class to apply and evaluate various crowdsourcing benchmark techniques.
-
-	This class handles the application of different benchmark techniques for aggregating
-	crowd-sourced labels, using implementations from the crowdkit library. It manages
-	data formatting and processing for these techniques.
-
-	Attributes:
-		ground_truth (dict): Dictionary containing ground truth labels for train/test data
-		crowd_labels (dict): Dictionary containing crowd-sourced labels for train/test data
-		crowd_labels_original (dict): Backup of the original crowd labels
-	"""
-
-	def __init__(self, crowd_labels, ground_truth): # type: (Dict, Dict) -> None
-		"""
-		Initialize the BenchmarkTechniques class with crowd labels and ground truth.
-
-		Parameters:
-			crowd_labels (dict): Dictionary with 'train' and 'test' keys, each containing
-								a DataFrame with crowd-sourced labels.
-			ground_truth (dict): Dictionary with 'train' and 'test' keys, each containing
-								a DataFrame with ground truth labels.
-		"""
-		self.ground_truth          = ground_truth
-		self.crowd_labels          = crowd_labels
-		self.crowd_labels_original = crowd_labels.copy()
-
-		for mode in ['train', 'test']:
-			self.crowd_labels[mode] = self.reshape_dataframe_into_this_sdk_format(self.crowd_labels[mode])
-
-
-	@classmethod
-	def get_techniques(cls, benchmark_name: params.OtherBenchmarkNames, test: pd.DataFrame, test_unique: np.ndarray):
-		"""
-		Apply a specific benchmark technique to the test data.
-
-		Parameters
-		----------
-		benchmark_name (params.OtherBenchmarkNames): The benchmark technique to apply
-		test : pd.DataFrame
-			Test data containing worker labels
-		test_unique : np.ndarray
-			Unique items in the test set
-
-		Returns
-		-------
-		function
-			The appropriate function for the specified benchmark technique
-		"""
-		def exception_handler(func):
-			"""
-			Decorator to handle exceptions in benchmark techniques.
-
-			If the wrapped function raises an exception, returns zeros instead.
-
-			Parameters:
-				func: The function to wrap with exception handling
-
-			Returns:
-				function: Wrapped function that returns zeros on exception
-			"""
-			def inner_function(*args, **kwargs):
-				try:
-					return func(*args, **kwargs)
-				except Exception:
-					return np.zeros(test_unique.shape)
-
-			return inner_function
-
-		@exception_handler
-		def KOS():
-			r"""Karger-Oh-Shah aggregation model.
-
-				Iterative algorithm that calculates the log-likelihood of the task being positive while modeling
-				the reliabilities of the workers.
-
-				Let $A_{ij}$ be a matrix of answers of worker $j$ on task $i$.
-				$A_{ij} = 0$ if worker $j$ didn't answer the task $i$, otherwise $|A_{ij}| = 1$.
-				The algorithm operates on real-valued task messages $x_{i \rightarrow j}$ and
-				worker messages $y_{j \rightarrow i}$. A task message $x_{i \rightarrow j}$ represents
-				the log-likelihood of task $i$ being a positive task, and a worker message $y_{j \rightarrow i}$ represents
-				how reliable worker $j$ is.
-
-				On iteration $k$ the values are updated as follows:
-				$$
-				x_{i \rightarrow j}^{(k)} = \sum_{j^{'} \in \partial i \backslash j} A_{ij^{'}} y_{j^{'} \rightarrow i}^{(k-1)} \\
-				y_{j \rightarrow i}^{(k)} = \sum_{i^{'} \in \partial j \backslash i} A_{i^{'}j} x_{i^{'} \rightarrow j}^{(k-1)}
-				$$
-
-				Karger, David R., Sewoong Oh, and Devavrat Shah. Budget-optimal task allocation for reliable crowdsourcing systems.
-				Operations Research 62.1 (2014): 1-24.
-
-				<https://arxiv.org/abs/1110.3564>
-
-			"""
-			return crowdkit_aggregation.KOS().fit_predict(test)
-
-		@exception_handler
-		def MACE():
-			"""
-			MACE (Multi-Annotator Competence Estimation) aggregation model.
-
-			A probabilistic model that estimates worker competence and assigns weights
-			accordingly. Returns probability of the positive class.
-
-			Returns:
-				np.ndarray: Probability of the positive class for each task
-			"""
-			return crowdkit_aggregation.MACE(n_iter=10).fit_predict_proba(test)[1]
-
-		@exception_handler
-		def MajorityVote():
-			"""
-			Simple majority voting aggregation.
-
-			Aggregates labels by taking the majority vote from all workers.
-
-			Returns:
-				np.ndarray: Majority vote result for each task
-			"""
-			return crowdkit_aggregation.MajorityVote().fit_predict(test)
-
-		@exception_handler
-		def MMSR():
-			"""
-			MMSR (Multi-class Minimax Soft Reliability) aggregation model.
-
-			A generalization of Dawid-Skene that uses a minimax entropy approach.
-
-			Returns:
-				np.ndarray: Predicted labels for each task
-			"""
-			return crowdkit_aggregation.MMSR().fit_predict(test)
-
-		@exception_handler
-		def Wawa():
-			"""
-			Wawa aggregation model.
-
-			A worker-weighted aggregation model where weights are determined by
-			worker performance.
-
-			Returns:
-				np.ndarray: Probability of the positive class for each task
-			"""
-			return crowdkit_aggregation.Wawa().fit_predict_proba(test)[1]
-
-		@exception_handler
-		def ZeroBasedSkill():
-			"""
-			Zero-Based Skill aggregation model.
-
-			Estimates worker skill from a baseline of zero and weighs votes accordingly.
-
-			Returns:
-				np.ndarray: Probability of the positive class for each task
-			"""
-			return crowdkit_aggregation.ZeroBasedSkill().fit_predict_proba(test)[1]
-
-		@exception_handler
-		def GLAD():
-			"""
-			GLAD (Generative model of Labels, Abilities, and Difficulties) aggregation.
-
-			Models both worker ability and task difficulty to weigh responses.
-
-			Returns:
-				np.ndarray: Probability of the positive class for each task
-			"""
-			return crowdkit_aggregation.GLAD().fit_predict_proba(test)[1]
-
-		@exception_handler
-		def DawidSkene():
-			"""
-			Dawid-Skene aggregation model.
-
-			A probabilistic model that estimates worker confusion matrices
-			to determine worker reliability.
-
-			Returns:
-				np.ndarray: Predicted labels for each task
-			"""
-			return crowdkit_aggregation.DawidSkene().fit_predict(test)
-
-
-		return eval(benchmark_name.value)()
-
-
-	@staticmethod
-	def wrapper(benchmark_name: params.OtherBenchmarkNames, test: pd.DataFrame, test_unique: np.ndarray) -> Tuple[params.OtherBenchmarkNames, np.ndarray]:
-		"""
-		Wrapper function to apply a benchmark technique and return its name with results.
-
-		This static method applies the specified benchmark technique and pairs its name
-		with the resulting predictions.
-
-		Parameters:
-			benchmark_name (params.OtherBenchmarkNames): The benchmark technique to apply
-			test (pd.DataFrame): The test data in the crowdkit format
-			test_unique (np.ndarray): Unique task IDs in the test data
-
-		Returns:
-			tuple: A tuple containing (benchmark_name, aggregated_labels)
-		"""
-		return benchmark_name, BenchmarkTechniques.get_techniques( benchmark_name=benchmark_name, test=test, test_unique=test_unique )
-
-
-	@staticmethod
-	def objective_function(test, test_unique):
-		"""
-		Create a partial function for applying benchmark techniques to specific test data.
-
-		This method returns a partial function that can be used with map() for parallel
-		processing of multiple benchmark techniques on the same test data.
-
-		Parameters:
-			test (pd.DataFrame): The test data in the crowdkit format
-			test_unique (np.ndarray): Unique task IDs in the test data
-
-		Returns:
-			functools.partial: A partial function with fixed test data parameters
-		"""
-		return functools.partial(BenchmarkTechniques.wrapper, test=test, test_unique=test_unique)
-
-
-	@classmethod
-	def apply(cls, true_labels, use_parallelization_benchmarks) -> pd.DataFrame:
-		"""
-		Apply all benchmark techniques to the provided labeled data.
-
-		This class method creates a BenchmarkTechniques instance with the provided data
-		and applies all benchmark techniques, optionally using parallel processing.
-
-		Parameters:
-			true_labels (dict): Dictionary with 'train' and 'test' keys, each containing a DataFrame with ground truth and crowd labels
-			use_parallelization_benchmarks (bool): Whether to use parallel processing
-
-		Returns:
-			pd.DataFrame: DataFrame with all benchmark technique results as columns
-		"""
-		ground_truth = {n: true_labels[n].truth.copy() 				     for n in ['train', 'test']}
-		crowd_labels = {n: true_labels[n].drop(columns=['truth']).copy() for n in ['train', 'test']}
-		return cls(crowd_labels=crowd_labels, ground_truth=ground_truth).calculate(use_parallelization_benchmarks)
-
-
-	def calculate(self, use_parallelization_benchmarks) ->  pd.DataFrame:
-		"""
-		Calculate aggregated labels using all benchmark techniques.
-
-		This method applies all defined benchmark techniques to the test data,
-		either in parallel or sequentially based on the parameter.
-
-		Parameters:
-			use_parallelization_benchmarks (bool): Whether to use parallel processing
-
-		Returns:
-			pd.DataFrame: DataFrame with benchmark technique names as columns and
-						aggregated labels as values
-		"""
-		# train    = self.crowd_labels['train']
-		# train_gt = self.ground_truth['train']
-		test: pd.DataFrame = self.crowd_labels['test']
-		test_unique: np.ndarray = test.task.unique()
-
-		function = self.objective_function(test=test, test_unique=test_unique)
-
-		if use_parallelization_benchmarks:
-			with multiprocessing.Pool(processes=len(params.OtherBenchmarkNames)) as pool:
-				output = pool.map(function, list(params.OtherBenchmarkNames))
-
-		else:
-			output = [function(benchmark_name=m) for m in params.OtherBenchmarkNames]
-
-		return pd.DataFrame({benchmark_name.value: aggregated_labels for benchmark_name, aggregated_labels in output})
-
-
-	@staticmethod
-	def reshape_dataframe_into_this_sdk_format(df_predicted_labels):
-		"""
-		Preprocess data to match the crowdkit SDK format.
-
-		This method transforms a DataFrame of predicted labels from a wide format (with workers
-		as columns) to a long format suitable for the crowdkit library, with worker, task, and
-		label as separate columns.
-
-		Parameters:
-			df_predicted_labels (pd.DataFrame): DataFrame with worker labels as columns
-
-		Returns:
-			pd.DataFrame: Reshaped DataFrame in crowdkit format with columns [worker, task, label]
-		"""
-		# Converting labels from binary to integer
-		df_crowd_labels: pd.DataFrame = df_predicted_labels.astype(int).copy()
-
-		# Separating the ground truth labels from the crowd labels
-		# ground_truth = df_crowd_labels.pop('truth')
-
-		# Stacking all the workers labels into one column
-		df_crowd_labels = df_crowd_labels.stack().reset_index().rename( columns={'level_0': 'task', 'level_1': 'worker', 0: 'label'})
-
-		# Reordering the columns to make it similar to crowd-kit examples
-		df_crowd_labels = df_crowd_labels[['worker', 'task', 'label']]
-
-		return df_crowd_labels  # , ground_truth
-
-
-@dataclass
-class ResultType:
-	confidence_scores: dict[str, pd.DataFrame]
-	aggregated_labels: pd.DataFrame
-	metrics 		 : pd.DataFrame
-
-
-@dataclass
-class WeightType:
-	PROPOSED: pd.DataFrame
-	TAO     : pd.DataFrame
-	SHENG   : pd.DataFrame
-
-
-@dataclass
-class Result2Type:
-	proposed        : ResultType
-	benchmark       : ResultType
-	weight          : WeightType
-	workers_strength: pd.DataFrame
-	n_workers       : int
-	true_label      : dict[str, pd.DataFrame]
-
-
-@dataclass
-class ResultComparisonsType:
-	outputs                   : dict
-	config                    : 'Settings'
-	weight_strength_relation  : pd.DataFrame
-
 
 @dataclass
 class AIM1_3:
@@ -1402,7 +982,7 @@ class AIM1_3:
 		return confidence_scores
 
 
-	def get_weights(self, workers_labels, preds, uncertainties, noisy_true_labels, n_workers) -> WeightType:
+	def get_weights(self, workers_labels, preds, uncertainties, noisy_true_labels, n_workers) -> params.WeightType:
 		"""
 		Calculate weights for different methods (proposed, TAO, and SHENG).
 
@@ -1421,7 +1001,7 @@ class AIM1_3:
 
 		Returns
 		-------
-		WeightType
+		params.WeightType
 			Named tuple containing weights for three methods:
 			- PROPOSED: Weights calculated using the proposed technique based on predictions and uncertainties
 			- TAO: Weights calculated based on Tao's method using actual labels
@@ -1436,27 +1016,27 @@ class AIM1_3:
 
 		weights_Sheng = pd.DataFrame(1 / n_workers, index=weights_Tao.index, columns=weights_Tao.columns)
 
-		return WeightType(PROPOSED=weights_proposed, TAO=weights_Tao, SHENG=weights_Sheng)
+		return params.WeightType(PROPOSED=weights_proposed, TAO=weights_Tao, SHENG=weights_Sheng)
 
 
-	def measuring_nu_and_confidence_score(self, weights: WeightType, preds_all, true_labels, use_parallelization_benchmarks: bool=False) -> Tuple[ResultType, ResultType]:
+	def measuring_nu_and_confidence_score(self, weights: params.WeightType, preds_all, true_labels, use_parallelization_benchmarks: bool=False) -> Tuple[params.ResultType, params.ResultType]:
 		"""Calculates the confidence scores (nu) and evaluation metrics for proposed methods and benchmarks.
 
 		This function computes the confidence scores and aggregated labels using the provided weights
 		for both the proposed techniques and benchmark methods (Tao and Sheng). It also calculates
 		evaluation metrics (AUC, Accuracy, and F1 score) for all methods.
 
-			weights (WeightType): Object containing weights for proposed methods and benchmarks.
+			weights (params.WeightType): Object containing weights for proposed methods and benchmarks.
 			preds_all: Dictionary containing workers' predictions for different datasets and methods.
 			true_labels: Ground truth labels for evaluation.
 			use_parallelization_benchmarks (bool, optional): Whether to use parallelization for benchmark calculation.
 				Defaults to False.
 
-			Tuple[ResultType, ResultType]: A tuple containing:
+			Tuple[params.ResultType, params.ResultType]: A tuple containing:
 				- results_proposed: Results for proposed methods (aggregated labels, confidence scores, metrics)
 				- results_benchmarks: Results for benchmark methods (aggregated labels, confidence scores, metrics)
 		"""
-		def get_results_proposed(preds: pd.DataFrame) -> ResultType:
+		def get_results_proposed(preds: pd.DataFrame) -> params.ResultType:
 			"""
 			Returns:
 				F: pd.DataFrame(columns = pd.MultiIndex.from_product([params.ConsistencyTechniques, UncertaintyTechniques,ProposedTechniqueNames]),
@@ -1481,9 +1061,9 @@ class AIM1_3:
 				# Measuring the metrics
 				metrics[cln] = AIM1_3.get_AUC_ACC_F1(aggregated_labels=agg_labels[cln], truth=true_labels['test'].truth)
 
-			return ResultType(aggregated_labels=agg_labels, confidence_scores=confidence_scores, metrics=metrics)
+			return params.ResultType(aggregated_labels=agg_labels, confidence_scores=confidence_scores, metrics=metrics)
 
-		def get_results_tao_sheng(workers_labels) -> ResultType:
+		def get_results_tao_sheng(workers_labels) -> params.ResultType:
 			"""Calculating the weights for Tao and Sheng methods
 
 			Args:
@@ -1527,7 +1107,7 @@ class AIM1_3:
 
 			metrics_benchmarks = pd.DataFrame({cln: AIM1_3.get_AUC_ACC_F1(aggregated_labels=v_benchmarks[cln], truth=true_labels['test'].truth) for cln in v_benchmarks.columns})
 
-			return ResultType(aggregated_labels=v_benchmarks, confidence_scores=F_benchmarks, metrics=metrics_benchmarks)
+			return params.ResultType(aggregated_labels=v_benchmarks, confidence_scores=F_benchmarks, metrics=metrics_benchmarks)
 
 		# Getting confidence scores and aggregated labels for proposed techniques
 		results_proposed   = get_results_proposed(  preds_all['test']['mv'] )
@@ -1537,7 +1117,7 @@ class AIM1_3:
 
 
 	@classmethod
-	def core_measurements(cls, data, n_workers, config, feature_columns, seed, use_parallelization_benchmarks=False) -> Result2Type:
+	def core_measurements(cls, data, n_workers, config, feature_columns, seed, use_parallelization_benchmarks=False) -> params.Result2Type:
 		""" Final pred labels & uncertainties for proposed technique
 				dataframe = preds[train, test] * [mv] <=> {rows: samples, columns: workers}
 				dataframe = uncertainties[train, test]  {rows: samples, columns: workers}
@@ -1576,7 +1156,7 @@ class AIM1_3:
 		# merge workers_strength and weights
 		# merge_worker_strengths_and_weights()
 
-		return Result2Type( proposed		 = results_proposed,
+		return params.Result2Type( proposed		 = results_proposed,
 							benchmark        = results_benchmarks,
 							weight           = weights,
 							workers_strength = workers_strength,
@@ -1585,16 +1165,16 @@ class AIM1_3:
 
 
 	@staticmethod
-	def wrapper(args: Dict, config: Settings, data, feature_columns) -> Tuple[Dict, Result2Type]:
+	def wrapper(args: Dict, config: Settings, data, feature_columns) -> Tuple[Dict, params.Result2Type]:
 		return args, AIM1_3.core_measurements(data=data, n_workers=args['nl'], config=config, feature_columns=feature_columns, seed=args['seed'], use_parallelization_benchmarks=False)
 
 
 	@staticmethod
-	def objective_function(config: Settings, data, feature_columns) -> Callable[[Dict], Tuple[Dict, Result2Type]]:
+	def objective_function(config: Settings, data, feature_columns) -> Callable[[Dict], Tuple[Dict, params.Result2Type]]:
 		return functools.partial(AIM1_3.wrapper, config=config, data=data, feature_columns=feature_columns)
 
 
-	def get_outputs(self) -> Dict[str, List[ResultType]]:
+	def get_outputs(self) -> Dict[str, List[params.ResultType]]:
 		"""
 		Retrieves the outputs for the calculation or loads them from file based on the current configuration.
 
@@ -1614,7 +1194,7 @@ class AIM1_3:
 			- Loads the outputs directly from the specified file path using HDF5Storage.
 
 		Returns:
-			Dict[str, List[ResultType]]:
+			Dict[str, List[params.ResultType]]:
 				A dictionary mapping output keys to lists containing the results for each seed.
 		"""
 		if USE_HD5F_STORAGE:
@@ -1623,7 +1203,7 @@ class AIM1_3:
 		else:
 			path = self.config.output.path / 'outputs' / f'{self.config.dataset.dataset_name}.pkl'
 
-		def update_outputs() -> Dict[str, List[ResultType]]:
+		def update_outputs() -> Dict[str, List[params.ResultType]]:
 			"""
 			Update and return the simulation outputs based on the current core results.
 
@@ -1637,7 +1217,7 @@ class AIM1_3:
 			outputs dictionary is stored using HDF5Storage.
 
 			Returns:
-				Dict[str, List[ResultType]]: A dictionary mapping worker identifiers to lists
+				Dict[str, List[params.ResultType]]: A dictionary mapping worker identifiers to lists
 				of results updated for each seed.
 			"""
 			nonlocal core_results
@@ -1784,14 +1364,14 @@ class AIM1_3:
 	"""
 
 	@classmethod
-	def calculate_one_dataset(cls, config: Settings, dataset_name: params.DatasetNames=None) -> ResultComparisonsType:
+	def calculate_one_dataset(cls, config: Settings, dataset_name: params.DatasetNames=None) -> params.ResultComparisonsType:
 		"""
 		Calculates various output metrics and analyses for a given dataset using the provided configuration.
 
 		This method updates the configuration to specify the desired dataset, loads the corresponding data,
 		computes model outputs using the instance created with the input data and configuration, and then
 		evaluates the worker weight strength relationship. The results, along with the outputs and configuration,
-		are encapsulated in a ResultComparisonsType object that is returned to the caller.
+		are encapsulated in a params.ResultComparisonsType object that is returned to the caller.
 
 		Parameters:
 			config (Settings): Configuration settings that include parameters, dataset details, and other experiment configurations.
@@ -1799,7 +1379,7 @@ class AIM1_3:
 				Defaults to params.DatasetNames.IONOSPHERE.
 
 		Returns:
-			ResultComparisonsType: An object containing:
+			params.ResultComparisonsType: An object containing:
 				- weight_strength_relation: The computed relationship between worker weights and strength.
 				- outputs: The outputs produced by the model after running the dataset.
 				- config: The configuration that was used for the computation.
@@ -1835,10 +1415,10 @@ class AIM1_3:
 		weight_strength_relation = aim1_3.worker_weight_strength_relation(seed=0, n_workers=10)
 
 		if not USE_HD5F_STORAGE:
-			return ResultComparisonsType(weight_strength_relation=weight_strength_relation, outputs=outputs, config=config)
+			return params.ResultComparisonsType(weight_strength_relation=weight_strength_relation, outputs=outputs, config=config)
 
 		# Create result object
-		result = ResultComparisonsType(
+		result = params.ResultComparisonsType(
 			weight_strength_relation=weight_strength_relation,
 			outputs=outputs,
 			config=config
@@ -1853,7 +1433,7 @@ class AIM1_3:
 		return result
 
 	@classmethod
-	def calculate_all_datasets(cls, config: 'Settings') -> Dict[params.DatasetNames, ResultComparisonsType]:
+	def calculate_all_datasets(cls, config: 'Settings') -> Dict[params.DatasetNames, params.ResultComparisonsType]:
 		"""
 		Calculate results for all datasets specified in the configuration.
 
@@ -1869,7 +1449,7 @@ class AIM1_3:
 
 		Returns:
 		--------
-		Dict[params.DatasetNames, ResultComparisonsType]
+		Dict[params.DatasetNames, params.ResultComparisonsType]
 			A dictionary mapping dataset names to their respective result objects.
 
 		Notes:

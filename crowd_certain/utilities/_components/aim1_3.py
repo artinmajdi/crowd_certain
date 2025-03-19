@@ -9,10 +9,10 @@ from typing import Dict, Optional
 import numpy as np
 import pandas as pd
 
-from crowd_certain.utilities.config import params
+from crowd_certain.utilities.parameters import params
 from crowd_certain.utilities.io import dataset_loader, HDF5Storage, LoadSaveFile
-from crowd_certain.utilities.config.settings import Settings
-from crowd_certain.utilities.components.orchestrator import Orchestrator
+from crowd_certain.utilities.parameters.settings import Settings
+from crowd_certain.utilities._components.orchestrator import Orchestrator
 
 # Whether to use HDF5 storage for saving/loading results
 USE_HD5F_STORAGE = True

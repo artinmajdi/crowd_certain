@@ -11,26 +11,26 @@ import os
 import shutil
 from pathlib import Path
 
-from crowd_certain.utilities.config.settings import find_config_file, revert_to_default_config
+from crowd_certain.utilities.parameters.settings import ConfigManager
 
 def test_find_config_file():
     """Test the find_config_file function."""
     print("\n=== Testing find_config_file ===")
 
     # Test finding the regular config file
-    config_path = find_config_file(debug=True)
+    config_path = ConfigManager.find_config_file(debug=True)
     print(f"Regular config path: {config_path}")
     print(f"Exists: {config_path.exists()}")
 
     # Test finding the default config file
-    default_config_path = find_config_file(find_default_config=True, debug=True)
+    default_config_path = ConfigManager.find_config_file(find_default_config=True, debug=True)
     print(f"Default config path: {default_config_path}")
     print(f"Exists: {default_config_path.exists()}")
 
     # Test with a specific path
     specific_path = Path.cwd() / "test_specific_dir"
     specific_path.mkdir(exist_ok=True)
-    specific_config_path = find_config_file(config_path=specific_path, debug=True)
+    specific_config_path = ConfigManager.find_config_file(config_path=specific_path, debug=True)
     print(f"Specific config path: {specific_config_path}")
     print(f"Exists: {specific_config_path.exists()}")
 
@@ -53,7 +53,7 @@ def test_revert_to_default_config():
     test_dir.mkdir(exist_ok=True)
 
     # Test reverting to default config
-    success, config_path = revert_to_default_config(config_path=test_dir, debug=True)
+    success, config_path = ConfigManager.revert_to_default_config(config_path=test_dir, debug=True)
     print(f"Revert success: {success}")
     print(f"Config path: {config_path}")
     print(f"Exists: {config_path.exists()}")
@@ -80,7 +80,7 @@ def test_with_backup():
     print("\n=== Testing with backup and restore ===")
 
     # Find the current config file
-    config_path = find_config_file(debug=True)
+    config_path = ConfigManager.find_config_file(debug=True)
 
     # Check if it exists
     if not config_path.exists():
@@ -95,7 +95,7 @@ def test_with_backup():
             print(f"Created backup: {backup_path}")
 
         # Test reverting to default
-        success, new_config_path = revert_to_default_config(config_path=config_path, debug=True)
+        success, new_config_path = ConfigManager.revert_to_default_config(config_path=config_path, debug=True)
         print(f"Revert success: {success}")
         print(f"New config path: {new_config_path}")
         print(f"Exists: {new_config_path.exists()}")
@@ -123,7 +123,7 @@ def test_with_backup():
 
         return False
 
-def main():
+def main(debug: bool = False):
     """Main function."""
     print("=== Testing Configuration Functions ===")
 
@@ -139,4 +139,4 @@ def main():
     print("\n=== Configuration Function Tests Complete ===")
 
 if __name__ == "__main__":
-    main()
+    main(debug=True)
