@@ -2,6 +2,9 @@
 Test script for the Settings class that handles configuration.
 """
 
+import os
+import json
+import tempfile
 from pathlib import Path
 
 from crowd_certain.utilities.config.settings import Settings

@@ -9,7 +9,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from crowd_certain.utilities import AIM1_3
+from crowd_certain.utilities.utils import AIM1_3
 from crowd_certain.utilities.config.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques
 from crowd_certain.utilities.config.settings import Settings, OutputModes
 

@@ -16,8 +16,8 @@ def run_dashboard_with_subprocess():
     """Run the dashboard using subprocess."""
     print("Starting Crowd-Certain Dashboard using subprocess...")
 
-    # Get the path to the dashboard.py file - updated path
-    dashboard_path = Path(__file__).parent.parent / "utilities" / "visualization" / "dashboard.py"
+    # Get the path to the dashboard.py file
+    dashboard_path = Path(__file__).parent.parent / "utilities" / "dashboard.py"
 
     # Check if the file exists
     if not dashboard_path.exists():

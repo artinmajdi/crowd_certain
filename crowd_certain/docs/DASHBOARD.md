@@ -30,14 +30,12 @@ crowd_certain\scripts\install.bat
 ### Option 2: Manual installation
 
 1. Create and activate a virtual environment (recommended):
-
    ```bash
    python -m venv .venv
    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
    ```
 
 2. Install the required dependencies:
-
    ```bash
    pip install -r crowd_certain/config/requirements.txt
    ```
@@ -59,13 +57,11 @@ crowd_certain\scripts\run_dashboard.bat
 ### Option 2: Manual execution
 
 1. Activate your environment if not already activated:
-
    ```bash
    source ./crowd_certain/config/activate_env.sh  # On Windows: crowd_certain\config\activate.bat
    ```
 
 2. Run the dashboard:
-
    ```bash
    python -m crowd_certain.utilities.dashboard
    ```

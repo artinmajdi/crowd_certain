@@ -6,15 +6,14 @@ This example demonstrates how to visualize simulation results using matplotlib a
 
 import os
 import pickle
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 import pandas as pd
 
-# Updated imports to use the new module structure
-from crowd_certain.utilities.components.aim1_3 import AIM1_3
-from crowd_certain.utilities.config.settings import Settings
-from crowd_certain.utilities.config.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques
+from crowd_certain.utilities.utils import AIM1_3, Settings, DatasetNames
+from crowd_certain.utilities.config.params import UncertaintyTechniques, ConsistencyTechniques
 
 
 def run_simulation_for_visualization():

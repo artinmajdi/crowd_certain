@@ -1,11 +1,6 @@
 from __future__ import annotations
-from dataclasses import dataclass
 import enum
-from typing import Iterator, List, Type, TypeVar
-import pandas as pd
-from crowd_certain.utilities.config.settings import Settings
-
-import pandas as pd
+from typing import Type, TypeVar, Callable, List, Iterator, Tuple
 
 T = TypeVar('T', bound='EnumWithHelpers')
 class EnumWithHelpers(enum.Enum):
@@ -165,36 +160,6 @@ class ConfidenceScoreNames(EnumWithHelpers):
 class SimulationMethods(EnumWithHelpers):
 	RANDOM_STATES = "random_states"
 	MULTIPLE_CLASSIFIERS = "multiple_classifiers"
-
-
-@dataclass
-class ResultType:
-	confidence_scores: dict[str, pd.DataFrame]
-	aggregated_labels: pd.DataFrame
-	metrics 		 : pd.DataFrame
-
-@dataclass
-class WeightType:
-	PROPOSED: pd.DataFrame
-	TAO     : pd.DataFrame
-	SHENG   : pd.DataFrame
-
-
-@dataclass
-class Result2Type:
-	proposed        : ResultType
-	benchmark       : ResultType
-	weight          : WeightType
-	workers_strength: pd.DataFrame
-	n_workers       : int
-	true_label      : dict[str, pd.DataFrame]
-
-
-@dataclass
-class ResultComparisonsType:
-	outputs                   : dict
-	config                    : 'Settings'
-	weight_strength_relation  : pd.DataFrame
 
 
 def main():

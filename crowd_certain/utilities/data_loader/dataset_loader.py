@@ -1,9 +1,8 @@
-import pickle
 import pandas as pd
 import numpy as np
 import pathlib
 import os
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 from sklearn import preprocessing
 from crowd_certain.utilities.config.params import DatasetNames
 from ucimlrepo import fetch_ucirepo, list_available_datasets
@@ -326,49 +325,4 @@ def save_to_local_cache(config: Settings, dataset_name: DatasetNames, data_raw: 
             print(f"Failed to save dataset to alternative location: {str(alt_e)}")
 
 
-
-class LoadSaveFile:
-	"""
-	A utility class for loading and saving files with different formats.
-
-	This class provides a simple interface to load and save files with extensions
-	such as .pkl, .csv, and .xlsx, handling the appropriate serialization format
-	automatically based on the file extension.
-
-	Parameters
-	----------
-	path : pathlib.Path or str
-		The file path where the file should be loaded from or saved to.
-
-	Methods
-	-------
-	load(index_col=None, header=None)
-		Load a file from the specified path based on its extension.
-
-	dump(file, index=False)
-		Save a file to the specified path based on its extension.
-	"""
-	def __init__(self, path):
-		self.path = path
-
-	def load(self, index_col=None, header=None):
-		if self.path.exists():
-			if self.path.suffix == '.pkl':
-				with open(self.path, 'rb') as f:
-					return pickle.load(f)
-			elif self.path.suffix == '.csv':
-				return pd.read_csv(self.path)
-			elif self.path.suffix == '.xlsx':
-				return pd.read_excel(self.path, index_col=index_col, header=header)
-		return None
-
-	def dump(self, file, index=False):
-		self.path.parent.mkdir(parents=True, exist_ok=True)
-		if self.path.suffix == '.pkl':
-			with open(self.path, 'wb') as f:
-				pickle.dump(file, f)
-		elif self.path.suffix == '.csv':
-			file.to_csv(self.path, index=index)
-		elif self.path.suffix == '.xlsx':
-			file.to_excel(self.path, index=index)
 

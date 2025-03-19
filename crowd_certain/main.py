@@ -8,7 +8,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from crowd_certain.utilities.components.aim1_3 import AIM1_3
+from crowd_certain.utilities.utils import AIM1_3
 from crowd_certain.utilities.config import params
 from crowd_certain.utilities.config.settings import Settings, OutputModes
 

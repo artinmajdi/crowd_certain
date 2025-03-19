@@ -7,7 +7,7 @@ from pathlib import Path
 
 from crowd_certain.utilities.config.settings import Settings
 from crowd_certain.utilities.config.params import DatasetNames
-from crowd_certain.utilities.io import dataset_loader
+from crowd_certain.utilities.data_loader import dataset_loader
 
 # List of datasets to test, add or remove datasets as needed
 DATASETS_TO_TEST = [
