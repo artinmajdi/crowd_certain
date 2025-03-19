@@ -11,7 +11,7 @@ from typing import Dict, Tuple
 
 from sklearn import ensemble as sk_ensemble
 from crowd_certain.utilities.parameters import params
-
+from crowd_certain.utilities.utils import AIM1_3, ClassifierTraining
 class WorkerSimulator:
     """
     A class for simulating workers with varying skill levels and their label predictions.
@@ -273,7 +273,7 @@ class WorkerSimulator:
                 random_state=self.seed * sim_num
             )
         elif self.config.simulation.simulation_methods is params.SimulationMethods.MULTIPLE_CLASSIFIERS:
-            return self.config.simulation.classifiers_list[sim_num]
+            return ClassifierTraining.classifiers_list[sim_num]
 
     def _get_n_simulations(self):
         """

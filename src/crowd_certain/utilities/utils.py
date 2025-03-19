@@ -1,29 +1,101 @@
 # Standard library imports
 import functools
 import multiprocessing
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 # Third-party imports
 import numpy as np
 import pandas as pd
 import scipy
 import seaborn as sns
+import sklearn
 from matplotlib import pyplot as plt
 from scipy.interpolate import make_interp_spline
 from scipy.special import bdtrc
-from sklearn import ensemble as sk_ensemble, metrics as sk_metrics
+from sklearn import ensemble as sk_ensemble
+from sklearn import metrics as sk_metrics
 
 # Local imports
 from crowd_certain.utilities.benchmarks import BenchmarkTechniques
+from crowd_certain.utilities.io import dataset_loader
+from crowd_certain.utilities.io.dataset_loader import LoadSaveFile
+from crowd_certain.utilities.io.hdf5_storage import HDF5Storage
 from crowd_certain.utilities.parameters import params
 from crowd_certain.utilities.parameters.settings import Settings
-from crowd_certain.utilities.io import dataset_loader
-from crowd_certain.utilities.io.hdf5_storage import HDF5Storage
-from crowd_certain.utilities.io.dataset_loader import LoadSaveFile
 
 USE_HD5F_STORAGE = True
+
+
+class ClassifierTraining:
+	def __init__(self, config: 'Settings'):
+		self.config = config
+
+	def train_classifier(self, sim_num: int):
+		pass
+
+	def get_classifier(self, sim_num: int, random_state: int=0):
+		"""
+		Returns a classifier based on the simulation method configuration.
+
+		For params.SimulationMethods.RANDOM_STATES:
+			Returns a RandomForestClassifier with fixed parameters but varying random_state
+			for different simulation numbers.
+
+		For params.SimulationMethods.MULTIPLE_CLASSIFIERS:
+			Returns a classifier from the pre-configured list of classifiers based on
+			the simulation number.
+
+		Returns:
+			sklearn estimator: A classifier instance configured according to the simulation method.
+		"""
+		if self.config.simulation.simulation_methods is params.SimulationMethods.RANDOM_STATES:
+			return self.get_random_forest_ensemble(random_state=random_state, sim_num=sim_num)
+
+		elif self.config.simulation.simulation_methods is params.SimulationMethods.MULTIPLE_CLASSIFIERS:
+			return self.classifiers_list[sim_num]
+
+		raise ValueError(f"Invalid simulation method: {self.config.simulation.simulation_methods}")
+
+	@property
+	def n_classifiers(self) -> int:
+		return len(self.classifiers_list)
+
+	@property
+	def n_simulations(self) -> int:
+		if self.config.simulation.simulation_methods is params.SimulationMethods.RANDOM_STATES:
+			return self.config.simulation.num_simulations
+
+		elif self.config.simulation.simulation_methods is params.SimulationMethods.MULTIPLE_CLASSIFIERS:
+			return self.n_classifiers
+
+		raise ValueError(f"Invalid simulation method: {self.config.simulation.simulation_methods}")
+	def get_random_forest_ensemble(self, random_state: int, sim_num: int):
+		return sk_ensemble.RandomForestClassifier(n_estimators=4, max_depth=4, random_state=random_state * sim_num) # n_estimators=4, max_depth=4
+
+	@property
+	def classifiers_list(self):
+
+		from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
+		from sklearn.ensemble import AdaBoostClassifier, RandomForestClassifier
+		from sklearn.naive_bayes import GaussianNB
+		from sklearn.neighbors import KNeighborsClassifier
+		from sklearn.neural_network import MLPClassifier
+		from sklearn.svm import SVC
+		from sklearn.tree import DecisionTreeClassifier
+
+		return {
+			1: KNeighborsClassifier(3),
+			2: SVC(gamma=2, C=1),
+			3: DecisionTreeClassifier(max_depth=5),
+			4: RandomForestClassifier(max_depth=5, n_estimators=10, max_features=1),
+			5: MLPClassifier(alpha=1, max_iter=1000),
+			6: AdaBoostClassifier(),
+			7: GaussianNB(),
+			8: QuadraticDiscriminantAnalysis()}
+
+
 
 @dataclass
 class AIM1_3:
@@ -60,11 +132,12 @@ class AIM1_3:
 	data            : dict
 	feature_columns : list
 	config           : 'Settings'
+	classifier_training : ClassifierTraining
 	n_workers       : int = 3
 	seed            : int = 0
 
 	def __post_init__(self):
-		# Setting the random seed
+		self.classifier_training = ClassifierTraining(config=self.config)
 		np.random.seed(self.seed + 1)
 
 
@@ -515,29 +588,8 @@ class AIM1_3:
 
 				nonlocal predicted_labels_all_sims
 
-				def get_classifier():
-					"""
-					Returns a classifier based on the simulation method configuration.
-
-					For params.SimulationMethods.RANDOM_STATES:
-						Returns a RandomForestClassifier with fixed parameters but varying random_state
-						for different simulation numbers.
-
-					For params.SimulationMethods.MULTIPLE_CLASSIFIERS:
-						Returns a classifier from the pre-configured list of classifiers based on
-						the simulation number.
-
-					Returns:
-						sklearn estimator: A classifier instance configured according to the simulation method.
-					"""
-					if self.config.simulation.simulation_methods is params.SimulationMethods.RANDOM_STATES:
-						return sk_ensemble.RandomForestClassifier(n_estimators=4, max_depth=4, random_state=self.seed * sim_num) # n_estimators=4, max_depth=4
-
-					elif self.config.simulation.simulation_methods is params.SimulationMethods.MULTIPLE_CLASSIFIERS:
-						return self.config.simulation.classifiers_list[sim_num]
-
 				# training a random forest on the aformentioned labels
-				classifier = get_classifier()
+				classifier = self.classifier_training.get_classifier(sim_num=sim_num, random_state=self.seed)
 
 				classifier.fit( X=self.data['train'][self.feature_columns], y=truth['train'][LB] )
 
@@ -577,21 +629,6 @@ class AIM1_3:
 
 					# predicted probability of each class after MV over all simulations
 					predicted_labels_all_sims[mode][LB]['mv'] = ( predicted_labels_all_sims[mode][LB].mean(axis=1) > 0.5)
-
-			def get_n_simulations():
-				"""
-				Determines and returns the number of simulations to be run based on the simulation method.
-
-				Returns:
-					int: The number of simulations.
-						- If using RANDOM_STATES method, returns the configured number of simulations.
-						- If using MULTIPLE_CLASSIFIERS method, returns the number of classifiers in the list.
-				"""
-				if self.config.simulation.simulation_methods is params.SimulationMethods.RANDOM_STATES:
-					return self.config.simulation.num_simulations
-
-				elif self.config.simulation.simulation_methods is params.SimulationMethods.MULTIPLE_CLASSIFIERS:
-					return len(self.config.simulation.classifiers_list)
 
 			def swap_axes(predicted_labels_all_sims) -> dict[str, dict[str, pd.DataFrame]]:
 				"""
@@ -638,7 +675,7 @@ class AIM1_3:
 
 				update_noisy_labels()
 
-				for sim_num in range(get_n_simulations()):
+				for sim_num in range(self.classifier_training.n_simulations):
 					update_predicted_labels_all_sims(LB=LB, sim_num=sim_num)
 
 				update_uncertainties(LB)
@@ -1481,7 +1518,6 @@ class AIM1_3:
 			h5s.save_all_datasets_results(results)
 
 		return results
-
 
 class Aim1_3_Data_Analysis_Results:
 	"""

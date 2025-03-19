@@ -10,7 +10,7 @@ from pydantic.functional_validators import field_validator
 import sklearn
 
 from crowd_certain.utilities.parameters import params
-from crowd_certain.config import CONFIG_DIR
+from crowd_certain.config import CONFIG_PATH, DEFAULT_CONFIG_DICT
 
 PathNoneType: TypeAlias = Union[pathlib.Path, None]
 
@@ -19,7 +19,7 @@ class DatasetSettings(BaseModel):
 	data_mode         : params.DataModes          = params.DataModes.TRAIN
 	path_all_datasets : pathlib.Path       		  = pathlib.Path('datasets')
 	dataset_name      : params.DatasetNames       = params.DatasetNames.CHESS
-	datasetNames      : list[params.DatasetNames] = Field(default=None)
+	datasetNames      : list[params.DatasetNames] = Field(default=[params.DatasetNames.CHESS])
 	non_null_samples  : bool               = True
 	random_state      : int                = 0
 	shuffle           : bool               = False
@@ -90,18 +90,6 @@ class SimulationSettings(BaseModel):
 	def workers_list(self):
 		return list(range(*self.n_workers_min_max))
 
-	@property
-	def classifiers_list(self):
-		return  [ sklearn.neighbors.KNeighborsClassifier(3),
-					sklearn.svm.SVC(gamma=2, C=1),
-					sklearn.tree.DecisionTreeClassifier(max_depth=5),
-					sklearn.ensemble.RandomForestClassifier(max_depth=5, n_estimators=10, max_features=1),
-					sklearn.neural_network.MLPClassifier(alpha=1, max_iter=1000),
-					sklearn.ensemble.AdaBoostClassifier(),
-					sklearn.naive_bayes.GaussianNB(),
-					sklearn.discriminant_analysis.QuadraticDiscriminantAnalysis(),
-						]
-
 
 class Settings(BaseModel):
 	"""Main settings class that contains all configuration settings for the application."""
@@ -157,9 +145,7 @@ class Settings(BaseModel):
 class ConfigManager:
 
 	@staticmethod
-	def find_config_file(config_path: Union[str, pathlib.Path] = None,
-						debug: bool = False,
-						find_default_config: bool = False) -> pathlib.Path:
+	def find_config_file(config_path: Union[str, pathlib.Path] = CONFIG_PATH / 'config.json', debug: bool = False) -> pathlib.Path:
 		"""
 		Find the config.json file in the project.
 
@@ -175,38 +161,24 @@ class ConfigManager:
 		Raises:
 			FileNotFoundError: If no config file is found and raise_error is True
 		"""
-		# For default config case, return the fixed location
-		if find_default_config:
-			default_config_path = CONFIG_DIR / "config_default.json"
+
+		# If the provided path is a directory, append the config filename
+		config_path = pathlib.Path(config_path)
+		if config_path.is_dir():
+			config_path = config_path / 'config.json'
+
+		if config_path.exists():
 			if debug:
-				print(f"Looking for default config at fixed location: {default_config_path}")
-			return default_config_path
+				print(f"Using specified config file at: {config_path}")
+			return config_path
 
-		# For regular config.json, continue with the normal search process
-		# If a specific config path is provided, check it first
-		if config_path is not None:
-
-			# If the provided path is a directory, append the config filename
-			config_path = pathlib.Path(config_path)
-			if config_path.is_dir():
-				config_path = config_path / 'config.json'
-
-			# If it's a file but not named correctly, replace the name
-			elif config_path.name != 'config.json':
-				config_path = config_path.with_name('config.json')
-
-			if config_path.exists():
-				if debug:
-					print(f"Using specified config file at: {config_path}")
-				return config_path
-
-			elif debug:
-				print(f"Specified config file not found at: {config_path}")
+		elif debug:
+			print(f"Specified config file not found at: {config_path}")
 
 		# Check multiple possible locations for the config file
 		possible_locations = [
-				# Config directory using CONFIG_DIR
-			CONFIG_DIR / 'config.json',
+			# Config directory using CONFIG_DIR
+			CONFIG_PATH / 'config.json',
 
 			# Current directory
 			pathlib.Path.cwd() / 'config.json',
@@ -233,61 +205,33 @@ class ConfigManager:
 			elif debug:
 				print(f"Config file not found at: {location}")
 
-		# If no config file is found, return a default path
-		default_location = CONFIG_DIR / 'config.json'
-		if debug:
-			print(f"No config file found. Using default location: {default_location}")
+		# If no config file is found, save the default config to the config location
+		ConfigManager.revert_to_default_config(debug=debug)
 
-		return default_location
+		return CONFIG_PATH / 'config.json'
 
 	@staticmethod
-	def revert_to_default_config(config_path: Union[str, pathlib.Path] = None,
-								debug: bool = False) -> Tuple[bool, pathlib.Path]:
-		"""
-		Find the default config file and copy it to the config location.
-
-		Args:
-			config_path: Path where the config should be copied to (optional)
-			debug: Whether to print debug information
-
-		Returns:
-			Tuple of (success, path):
-				- success: Boolean indicating whether the operation was successful
-				- path: Path where the config was copied to or should have been copied to
-		"""
-		# Get the default config file from the fixed location using CONFIG_DIR
-		default_config_path = CONFIG_DIR / "config_default.json"
-		if debug:
-			print(f"Using default config from fixed location: {default_config_path}")
+	def revert_to_default_config(config_path: Union[str, pathlib.Path] = CONFIG_PATH / 'config.json', debug: bool = False):
 
 		# Determine the target path for the config file
-		if config_path is None:
-			# Use the CONFIG_DIR for the config file
-			config_path = CONFIG_DIR / 'config.json'
-		else:
-			config_path = pathlib.Path(config_path)
-			if config_path.is_dir():
-				config_path = config_path / 'config.json'
+		config_path = pathlib.Path(config_path)
+
+		if config_path.is_dir():
+			config_path = config_path / 'config.json'
 
 		# Ensure the directory exists
 		config_path.parent.mkdir(parents=True, exist_ok=True)
 
-		# Check if the default config exists
-		if not default_config_path.exists():
-			if debug:
-				print(f"Default config file not found at: {default_config_path}")
-			return False, config_path
-
 		# Copy the default config to the target location
 		try:
-			shutil.copy2(default_config_path, config_path)
+			with open(config_path, "w") as f:
+				json.dump(DEFAULT_CONFIG_DICT, f, indent=4)
 			if debug:
-				print(f"Successfully copied default config from {default_config_path} to {config_path}")
-			return True, config_path
+				print(f"Successfully saved default config to {config_path}")
+
 		except Exception as e:
 			if debug:
-				print(f"Error copying default config: {str(e)}")
-			return False, config_path
+				print(f"Error saving default config: {str(e)}")
 
 
 	@staticmethod
@@ -341,52 +285,22 @@ class ConfigManager:
 			return result
 
 		def get_config(args_dict: dict[str, Any]) -> Settings:
-			"""
-			Load and update configuration from file and command line arguments.
 
-			Args:
-				args_dict: Dictionary of command line arguments
+			def load_config_json_file(config_path: pathlib.Path):
 
-			Returns:
-				Settings object with all configuration parameters
+				if debug:
+					print(f"Loading configuration from: {config_path}")
 
-			Raises:
-				FileNotFoundError: If the config file is not found
-				ValueError: If the config file contains invalid JSON
-			"""
-			# Load the config.json file
-			if args_dict.get('config') is not None:
-				config_path = args_dict.get('config')
-			else:
-				config_path = None
+				try:
+					with open(config_path) as f:
+						return json.load(f)
 
-			# Find the config file
-			config_path = ConfigManager.find_config_file(config_path=config_path, debug=debug)
+				except json.JSONDecodeError as e:
+					raise ValueError(f"Invalid JSON in config file {config_path}: {e}")
 
-			# If the config file doesn't exist, try to revert to the default config
-			if not config_path.exists():
-				success, config_path = ConfigManager.revert_to_default_config(config_path=config_path, debug=debug)
-				if not success or not config_path.exists():
-					raise FileNotFoundError(f'Config file not found at {config_path} and could not revert to default config')
+				except Exception as e:
+					raise IOError(f"Error reading config file {config_path}: {e}")
 
-			if debug:
-				print(f"Loading configuration from: {config_path}")
-
-			try:
-				with open(config_path) as f:
-					config_data = json.load(f)
-			except json.JSONDecodeError as e:
-				raise ValueError(f"Invalid JSON in config file {config_path}: {e}")
-			except Exception as e:
-				raise IOError(f"Error reading config file {config_path}: {e}")
-
-			# Validate the config data structure
-			required_sections = ['dataset', 'simulation', 'technique', 'output']
-			missing_sections = [section for section in required_sections if section not in config_data]
-			if missing_sections:
-				raise ValueError(f"Config file is missing required sections: {', '.join(missing_sections)}")
-
-			# Update the config with command line arguments
 			def update_config(model_class, config_key):
 				"""Update config data with command line arguments for a specific section."""
 				if config_key not in config_data:
@@ -395,6 +309,16 @@ class ConfigManager:
 				for key in model_class.__annotations__:
 					if key in args_dict:
 						config_data[config_key][key] = args_dict[key]
+
+			# Load the config.json file
+			config_path = ConfigManager.find_config_file( config_path=args_dict.get('config', CONFIG_PATH / 'config.json') )
+			config_data = load_config_json_file(config_path)
+
+			# Validate the config data structure
+			required_sections = ['dataset', 'simulation', 'technique', 'output']
+			missing_sections = [section for section in required_sections if section not in config_data]
+			if missing_sections:
+				raise ValueError(f"Config file is missing required sections: {', '.join(missing_sections)}")
 
 			# Update each section of the config
 			update_config(DatasetSettings    , 'dataset')
@@ -414,8 +338,7 @@ class ConfigManager:
 
 def main():
 	config = ConfigManager.get_settings()
-	print(config.dataset.datasetInfoList)
-	print('something')
+	print(config.dataset.datasetNames)
 
 
 if __name__ == '__main__':
