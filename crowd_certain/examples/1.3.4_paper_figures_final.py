@@ -1,8 +1,5 @@
 from crowd_certain.utilities import utils
 from crowd_certain.utilities.config.settings import get_settings
-from crowd_certain.utilities.config.params import DatasetNames
-import cProfile
-import pstats
 
 def main():
 
@@ -14,12 +11,6 @@ def main():
 
 
 if __name__ == '__main__':
-
-	# with cProfile.Profile() as pr:
-	# 	main()
-	# p = pstats.Stats(pr)
-	# p.sort_stats(pstats.SortKey.TIME)
-	# p.dump_stats(filename='needs_profiling.prof')
 
 	main()
 	print(' sf s  s')

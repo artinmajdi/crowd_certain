@@ -5,25 +5,21 @@ A Streamlit-based dashboard for visualizing and interacting with the Crowd-Certa
 This dashboard allows users to run simulations, analyze results, and explore the performance
 of different crowd-sourced label aggregation techniques.
 """
+# Standard library imports
+import os
+from pathlib import Path
+from typing import List
 
-import json
-import streamlit as st
-import pandas as pd
-import numpy as np
+# Third-party imports
 import matplotlib.pyplot as plt
 import seaborn as sns
-import sys
-import os
-import shutil
-from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple, Union
+import streamlit as st
 
-# Import directly from the utilities module since we're now in the same package
-from crowd_certain.utilities.utils import AIM1_3
+# Local imports
 from crowd_certain.utilities.config import params
-from crowd_certain.utilities.config.settings import Settings, get_settings, find_config_file, revert_to_default_config
-from crowd_certain.utilities.utils import ResultComparisonsType
+from crowd_certain.utilities.config.settings import Settings, find_config_file, get_settings, revert_to_default_config
 from crowd_certain.utilities.data_loader.dataset_loader import find_dataset_path
+from crowd_certain.utilities.utils import AIM1_3, ResultComparisonsType
 
 class DashboardStyles:
     """Manages CSS styles for the dashboard."""

@@ -1,25 +1,28 @@
+# Standard library imports
 import functools
 import multiprocessing
 import pickle
-import h5py
-import json
+from collections import defaultdict, OrderedDict
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Tuple, Union
+
+# Third-party imports
 import numpy as np
 import pandas as pd
 import scipy
 import seaborn as sns
-from datetime import datetime
-from pathlib import Path
-from collections import defaultdict, OrderedDict
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Tuple, Union
-from crowdkit import aggregation as crowdkit_aggregation
 from matplotlib import pyplot as plt
 from scipy.interpolate import make_interp_spline
 from scipy.special import bdtrc
 from sklearn import ensemble as sk_ensemble, metrics as sk_metrics
-from crowd_certain.utilities.data_loader import dataset_loader
+
+# Crowdkit imports
+from crowdkit import aggregation as crowdkit_aggregation
+
+# Local imports
 from crowd_certain.utilities.config import params
 from crowd_certain.utilities.config.settings import Settings
+from crowd_certain.utilities.data_loader import dataset_loader
 from crowd_certain.utilities.data_loader.hdf5_storage import HDF5Storage
 
 
@@ -1810,7 +1813,7 @@ class AIM1_3:
 			config.dataset.dataset_name = dataset_name
 
 		# Check if results already exist in HDF5 storage and should be loaded
-		if USE_HD5F_STORAGE and config.output.mode is params.OutputModes.LOAD:
+		if USE_HD5F_STORAGE and config.output.mode is params.OutputModes.LOAD_LOCAL:
 			h5_path = config.output.path / 'results' / f'{config.dataset.dataset_name}.h5'
 			h5s = HDF5Storage(h5_path)
 			result = h5s.load_result_comparisons(config.dataset.dataset_name.value)
