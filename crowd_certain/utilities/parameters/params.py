@@ -5,7 +5,7 @@ from typing import Type, TypeVar, List, Iterator
 
 import pandas as pd
 
-from crowd_certain.utilities.parameters.settings import Settings
+# from crowd_certain.utilities.parameters.settings import Settings
 
 T = TypeVar('T', bound='EnumWithHelpers')
 class EnumWithHelpers(enum.Enum):
