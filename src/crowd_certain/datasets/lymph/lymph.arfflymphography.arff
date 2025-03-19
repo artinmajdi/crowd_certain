@@ -1,5 +1,0 @@
-@relation lymphography
-@attribute DIFF numeric
-@attribute class {}
-
-@data
