@@ -35,18 +35,19 @@ source ./activate_env.sh
 activate_env.bat
 ```
 
-#### For Unix/Linux/macOS:
+#### For Unix/Linux/macOS
 
 ```bash
 ./scripts/install.sh
 ```
 
 This script will prompt you to choose between:
+
 1. Pip with virtual environment (.venv)
 2. Pip (system-wide or in current environment)
 3. Conda/Mamba (recommended for complex dependencies)
 
-#### For Windows:
+#### For Windows
 
 ```bash
 scripts\install.bat
@@ -59,12 +60,14 @@ This batch file provides the same options as the Unix script.
 #### Option 1: Using pip (recommended for most users)
 
 1. Create a virtual environment (optional but recommended):
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
    ```
 
 2. Install the package in development mode:
+
    ```bash
    pip install -e .
    ```
@@ -74,12 +77,14 @@ This batch file provides the same options as the Unix script.
 #### Option 2: Using conda/mamba (recommended for complex dependencies)
 
 1. Create and activate a conda environment using the provided environment file:
+
    ```bash
    conda env create -f crowd_certain/config/environment.yml
    conda activate crowd-certain
    ```
 
 2. Install the package in development mode:
+
    ```bash
    pip install -e .
    ```
@@ -89,16 +94,19 @@ This batch file provides the same options as the Unix script.
 After installation, you can activate the environment using:
 
 - For pip with virtual environment:
+
   ```bash
   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
   ```
 
 - For conda:
+
   ```bash
   conda activate crowd-certain
   ```
 
 - Using the provided activation script:
+
   ```bash
   source ./crowd_certain/config/activate_env.sh  # On Windows: crowd_certain\config\activate.bat
   ```
@@ -136,11 +144,13 @@ print(crowd_certain.__version__)
 1. **Python Not Found**: If the installation script reports that Python is not found, make sure Python 3.10+ is installed and available in your PATH. The scripts check for both 'python' and 'python3' commands.
 
 2. **Missing Dependencies**: If you encounter errors about missing dependencies, try reinstalling with:
+
    ```bash
    pip install -e . --force-reinstall
    ```
 
 3. **Conda Environment Issues**: If you're using conda and encounter environment issues, try:
+
    ```bash
    conda clean --all
    conda env remove -n crowd-certain
@@ -148,6 +158,7 @@ print(crowd_certain.__version__)
    ```
 
 4. **Version Conflicts**: If you encounter version conflicts with other packages, consider creating a dedicated virtual environment:
+
    ```bash
    python -m venv crowd_env
    source crowd_env/bin/activate  # On Windows: crowd_env\Scripts\activate
