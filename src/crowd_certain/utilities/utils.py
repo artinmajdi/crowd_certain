@@ -27,6 +27,8 @@ USE_HD5F_STORAGE = True
 class ClassifierTraining:
 	def __init__(self, config: 'Settings'):
 		self.config = config
+		# Pre-initialize the classifiers_list to avoid repeated imports
+		self._classifiers_list = None
 
 	def train_classifier(self, sim_num: int):
 		pass
@@ -67,29 +69,38 @@ class ClassifierTraining:
 			return self.n_classifiers
 
 		raise ValueError(f"Invalid simulation method: {self.config.simulation.simulation_methods}")
+
 	def get_random_forest_ensemble(self, random_state: int, sim_num: int):
-		return sk_ensemble.RandomForestClassifier(n_estimators=4, max_depth=4, random_state=random_state * sim_num) # n_estimators=4, max_depth=4
+		return sk_ensemble.RandomForestClassifier(
+            n_estimators=4,
+            max_depth=4,
+            random_state=random_state * sim_num,
+            n_jobs=-1  # Use all available processors for parallel training
+        )
 
 	@property
 	def classifiers_list(self):
+		# Lazy initialization of classifiers to avoid repeated imports and improve startup time
+		if self._classifiers_list is None:
+			from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
+			from sklearn.ensemble import AdaBoostClassifier, RandomForestClassifier
+			from sklearn.naive_bayes import GaussianNB
+			from sklearn.neighbors import KNeighborsClassifier
+			from sklearn.neural_network import MLPClassifier
+			from sklearn.svm import SVC
+			from sklearn.tree import DecisionTreeClassifier
 
-		from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
-		from sklearn.ensemble import AdaBoostClassifier, RandomForestClassifier
-		from sklearn.naive_bayes import GaussianNB
-		from sklearn.neighbors import KNeighborsClassifier
-		from sklearn.neural_network import MLPClassifier
-		from sklearn.svm import SVC
-		from sklearn.tree import DecisionTreeClassifier
+			self._classifiers_list = {
+				1: KNeighborsClassifier(3, n_jobs=-1),  # Add parallel processing
+				2: SVC(gamma=2, C=1, probability=True),
+				3: DecisionTreeClassifier(max_depth=5),
+				4: RandomForestClassifier(max_depth=5, n_estimators=10, max_features=1, n_jobs=-1),
+				5: MLPClassifier(alpha=1, max_iter=1000),
+				6: AdaBoostClassifier(),
+				7: GaussianNB(),
+				8: QuadraticDiscriminantAnalysis()}
 
-		return {
-			1: KNeighborsClassifier(3),
-			2: SVC(gamma=2, C=1),
-			3: DecisionTreeClassifier(max_depth=5),
-			4: RandomForestClassifier(max_depth=5, n_estimators=10, max_features=1),
-			5: MLPClassifier(alpha=1, max_iter=1000),
-			6: AdaBoostClassifier(),
-			7: GaussianNB(),
-			8: QuadraticDiscriminantAnalysis()}
+		return self._classifiers_list
 
 
 @dataclass

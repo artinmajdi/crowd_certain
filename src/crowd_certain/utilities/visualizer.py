@@ -748,198 +748,198 @@ class Aim1_3_Data_Analysis_Results:
 		self.save_outputs( filename=f'figure_{filename}', relative_path=relative_path, dataframe=df.T )
 
 
-class AIM1_3_Plot:
-	"""
-	A class for plotting data in a DataFrame format, with options for smoothing and visualization.
+# class AIM1_3_Plot:
+# 	"""
+# 	A class for plotting data in a DataFrame format, with options for smoothing and visualization.
 
-	This class provides various methods for manipulating and visualizing data, including
-	interpolation and smoothing of data points, customizing plot appearance, and displaying
-	markers for specific techniques.
+# 	This class provides various methods for manipulating and visualizing data, including
+# 	interpolation and smoothing of data points, customizing plot appearance, and displaying
+# 	markers for specific techniques.
 
-	Attributes:
-		plot_data (pd.DataFrame): The data to be plotted.
-		weight_strength_relation_interpolated (pd.DataFrame or None): Interpolated data after plotting.
+# 	Attributes:
+# 		plot_data (pd.DataFrame): The data to be plotted.
+# 		weight_strength_relation_interpolated (pd.DataFrame or None): Interpolated data after plotting.
 
-	Methods:
-		__init__(plot_data): Initializes the plotting class with the provided data.
-		data_interpolation(x, y, smooth, interpolation_pt_count): Static method that performs
-			data interpolation and smoothing.
-		plot(xlabel, ylabel, xticks, title, legend, smooth, interpolation_pt_count, show_markers):
-			Creates and displays the plot with the specified parameters.
-		_show(x, xnew, y_smooth, xlabel, ylabel, xticks, title): Static method for configuring and
-			displaying plot elements.
-		_legend(legend, columns): Static method for adding legend to the plot.
-		_fixing_x_axis(index): Static method for formatting the x-axis values.
-		_show_markers(show_markers, columns, x, y): Static method for displaying markers on
-			specific points in the plot.
-	"""
+# 	Methods:
+# 		__init__(plot_data): Initializes the plotting class with the provided data.
+# 		data_interpolation(x, y, smooth, interpolation_pt_count): Static method that performs
+# 			data interpolation and smoothing.
+# 		plot(xlabel, ylabel, xticks, title, legend, smooth, interpolation_pt_count, show_markers):
+# 			Creates and displays the plot with the specified parameters.
+# 		_show(x, xnew, y_smooth, xlabel, ylabel, xticks, title): Static method for configuring and
+# 			displaying plot elements.
+# 		_legend(legend, columns): Static method for adding legend to the plot.
+# 		_fixing_x_axis(index): Static method for formatting the x-axis values.
+# 		_show_markers(show_markers, columns, x, y): Static method for displaying markers on
+# 			specific points in the plot.
+# 	"""
 
-	def __init__(self, plot_data: pd.DataFrame):
+# 	def __init__(self, plot_data: pd.DataFrame):
 
-		self.weight_strength_relation_interpolated = None
-		assert isinstance(plot_data, pd.DataFrame), 'plot_data must be a pandas DataFrame'
+# 		self.weight_strength_relation_interpolated = None
+# 		assert isinstance(plot_data, pd.DataFrame), 'plot_data must be a pandas DataFrame'
 
-		self.plot_data = plot_data
+# 		self.plot_data = plot_data
 
-	@staticmethod
-	def data_interpolation(x, y, smooth=False, interpolation_pt_count=1000):
-		"""
-		Interpolate data points and optionally apply smoothing.
+# 	@staticmethod
+# 	def data_interpolation(x, y, smooth=False, interpolation_pt_count=1000):
+# 		"""
+# 		Interpolate data points and optionally apply smoothing.
 
-		Parameters
-		----------
-		x : numpy.ndarray
-			The x-coordinates of the data points.
-		y : numpy.ndarray
-			The y-coordinates of the data points. Should have shape (n, m) where
-			n is the number of data points and m is the number of dimensions.
-		smooth : bool, optional
-			Whether to apply smoothing to the data. Default is False.
-		interpolation_pt_count : int, optional
-			Number of points to use for interpolation if smoothing is applied. Default is 1000.
+# 		Parameters
+# 		----------
+# 		x : numpy.ndarray
+# 			The x-coordinates of the data points.
+# 		y : numpy.ndarray
+# 			The y-coordinates of the data points. Should have shape (n, m) where
+# 			n is the number of data points and m is the number of dimensions.
+# 		smooth : bool, optional
+# 			Whether to apply smoothing to the data. Default is False.
+# 		interpolation_pt_count : int, optional
+# 			Number of points to use for interpolation if smoothing is applied. Default is 1000.
 
-		Returns
-		-------
-		xnew : numpy.ndarray
-			The x-coordinates of the interpolated data.
-		y_smooth : numpy.ndarray
-			The y-coordinates of the interpolated and smoothed data.
+# 		Returns
+# 		-------
+# 		xnew : numpy.ndarray
+# 			The x-coordinates of the interpolated data.
+# 		y_smooth : numpy.ndarray
+# 			The y-coordinates of the interpolated and smoothed data.
 
-		Notes
-		-----
-		When smoothing is enabled, the function attempts to use a spline or convolution method.
-		If an exception occurs during smoothing, the original data is returned unmodified.
-		The 'kernel_regression' method is commented out in the current implementation.
-		"""
-		xnew, y_smooth = x, y
+# 		Notes
+# 		-----
+# 		When smoothing is enabled, the function attempts to use a spline or convolution method.
+# 		If an exception occurs during smoothing, the original data is returned unmodified.
+# 		The 'kernel_regression' method is commented out in the current implementation.
+# 		"""
+# 		xnew, y_smooth = x, y
 
-		if smooth:
-			SMOOTH_METHOD = 'kernel_regression'
+# 		if smooth:
+# 			SMOOTH_METHOD = 'kernel_regression'
 
-			try:
+# 			try:
 
-				if SMOOTH_METHOD == 'spline':
+# 				if SMOOTH_METHOD == 'spline':
 
-					xnew = np.linspace(x.min(), x.max(), interpolation_pt_count)
-					spl = make_interp_spline(x, y, k=2)
-					y_smooth = spl(xnew)
+# 					xnew = np.linspace(x.min(), x.max(), interpolation_pt_count)
+# 					spl = make_interp_spline(x, y, k=2)
+# 					y_smooth = spl(xnew)
 
-				elif SMOOTH_METHOD == 'conv':
+# 				elif SMOOTH_METHOD == 'conv':
 
-					filter_size = 5
-					filter_array = np.ones(filter_size) / filter_size
-					xnew = x.copy()
-					y_smooth = np.zeros(list(xnew.shape) + [2])
-					for j in range(y.shape[1]):
-						y_smooth[:, j] = np.convolve(y[:, j], filter_array, mode='same')
+# 					filter_size = 5
+# 					filter_array = np.ones(filter_size) / filter_size
+# 					xnew = x.copy()
+# 					y_smooth = np.zeros(list(xnew.shape) + [2])
+# 					for j in range(y.shape[1]):
+# 						y_smooth[:, j] = np.convolve(y[:, j], filter_array, mode='same')
 
-				# elif SMOOTH_METHOD == 'kernel_regression':
+# 				# elif SMOOTH_METHOD == 'kernel_regression':
 
-				#     xnew = np.linspace(thresh_technique.min(), thresh_technique.max(), interpolation_pt_count)
-				#     y_smooth = np.zeros(list(xnew.shape) + [y.shape[1]])
-				#     for j in range(y.shape[1]):
-				#         kr = statsmodels.nonparametric.kernel_regression.KernelReg(y[:, j], thresh_technique, 'c')
-				#         y_smooth[:, j], _ = kr.fit(xnew)
+# 				#     xnew = np.linspace(thresh_technique.min(), thresh_technique.max(), interpolation_pt_count)
+# 				#     y_smooth = np.zeros(list(xnew.shape) + [y.shape[1]])
+# 				#     for j in range(y.shape[1]):
+# 				#         kr = statsmodels.nonparametric.kernel_regression.KernelReg(y[:, j], thresh_technique, 'c')
+# 				#         y_smooth[:, j], _ = kr.fit(xnew)
 
-			except Exception as e:
-				print(e)
-				xnew, y_smooth = x, y
+# 			except Exception as e:
+# 				print(e)
+# 				xnew, y_smooth = x, y
 
-		return xnew, y_smooth
+# 		return xnew, y_smooth
 
-	def plot(self, xlabel='', ylabel='', xticks=True, title='', legend=None, smooth=True, interpolation_pt_count=1000, show_markers=params.ProposedTechniqueNames.PROPOSED):
-		"""
-		Plot the weight-strength relationship data.
+# 	def plot(self, xlabel='', ylabel='', xticks=True, title='', legend=None, smooth=True, interpolation_pt_count=1000, show_markers=params.ProposedTechniqueNames.PROPOSED):
+# 		"""
+# 		Plot the weight-strength relationship data.
 
-		This method takes the plot data stored in the instance and creates a plot of the weight-strength relationship.
-		It can interpolate and smooth the data, add markers for specific techniques, and set various plot attributes.
+# 		This method takes the plot data stored in the instance and creates a plot of the weight-strength relationship.
+# 		It can interpolate and smooth the data, add markers for specific techniques, and set various plot attributes.
 
-		Parameters:
-		-----------
-		xlabel : str, optional
-			Label for the x-axis, by default ''
-		ylabel : str, optional
-			Label for the y-axis, by default ''
-		xticks : bool, optional
-			Whether to display x-axis ticks, by default True
-		title : str, optional
-			Title for the plot, by default ''
-		legend : list or None, optional
-			Custom legend labels. If None, uses column names from plot_data, by default None
-		smooth : bool, optional
-			Whether to smooth the plotted data, by default True
-		interpolation_pt_count : int, optional
-			Number of points to use for interpolation when smoothing, by default 1000
-		show_markers : str or list, optional
-			Which technique(s) to show markers for. Uses params.ProposedTechniqueNames.PROPOSED by default
+# 		Parameters:
+# 		-----------
+# 		xlabel : str, optional
+# 			Label for the x-axis, by default ''
+# 		ylabel : str, optional
+# 			Label for the y-axis, by default ''
+# 		xticks : bool, optional
+# 			Whether to display x-axis ticks, by default True
+# 		title : str, optional
+# 			Title for the plot, by default ''
+# 		legend : list or None, optional
+# 			Custom legend labels. If None, uses column names from plot_data, by default None
+# 		smooth : bool, optional
+# 			Whether to smooth the plotted data, by default True
+# 		interpolation_pt_count : int, optional
+# 			Number of points to use for interpolation when smoothing, by default 1000
+# 		show_markers : str or list, optional
+# 			Which technique(s) to show markers for. Uses params.ProposedTechniqueNames.PROPOSED by default
 
-			Returns:
-		-------
-		None
-			The plot is displayed but not returned.
+# 			Returns:
+# 		-------
+# 		None
+# 			The plot is displayed but not returned.
 
-		Notes:
-		------
-		The interpolated data is stored in the weight_strength_relation_interpolated attribute as a pandas DataFrame.
-		"""
+# 		Notes:
+# 		------
+# 		The interpolated data is stored in the weight_strength_relation_interpolated attribute as a pandas DataFrame.
+# 		"""
 
-		columns = self.plot_data.columns.to_list()
-		y       = self.plot_data.values.astype(float)
-		x       = self._fixing_x_axis(index=self.plot_data.index)
+# 		columns = self.plot_data.columns.to_list()
+# 		y       = self.plot_data.values.astype(float)
+# 		x       = self._fixing_x_axis(index=self.plot_data.index)
 
-		xnew, y_smooth = AIM1_3_Plot.data_interpolation(x=x, y=y, smooth=smooth, interpolation_pt_count=interpolation_pt_count)
+# 		xnew, y_smooth = AIM1_3_Plot.data_interpolation(x=x, y=y, smooth=smooth, interpolation_pt_count=interpolation_pt_count)
 
-		self.weight_strength_relation_interpolated = pd.DataFrame(y_smooth, columns=columns, index=xnew)
-		self.weight_strength_relation_interpolated.index.name = 'workers_strength'
+# 		self.weight_strength_relation_interpolated = pd.DataFrame(y_smooth, columns=columns, index=xnew)
+# 		self.weight_strength_relation_interpolated.index.name = 'workers_strength'
 
-		plt.plot(xnew, y_smooth)
-		self._show_markers(show_markers=show_markers, columns=columns, x=x, y=y)
+# 		plt.plot(xnew, y_smooth)
+# 		self._show_markers(show_markers=show_markers, columns=columns, x=x, y=y)
 
-		self._show(x=x, xnew=xnew, y_smooth=y_smooth, xlabel=xlabel, ylabel=ylabel, xticks=xticks, title=title, )
-		self._legend(legend=legend, columns=columns)
+# 		self._show(x=x, xnew=xnew, y_smooth=y_smooth, xlabel=xlabel, ylabel=ylabel, xticks=xticks, title=title, )
+# 		self._legend(legend=legend, columns=columns)
 
-	@staticmethod
-	def _show(x, xnew, y_smooth, xlabel, ylabel, xticks, title):
+# 	@staticmethod
+# 	def _show(x, xnew, y_smooth, xlabel, ylabel, xticks, title):
 
-		plt.xlabel(xlabel)
-		plt.ylabel(ylabel)
-		plt.title(title)
-		plt.grid()
+# 		plt.xlabel(xlabel)
+# 		plt.ylabel(ylabel)
+# 		plt.title(title)
+# 		plt.grid()
 
-		if xticks:
-			plt.xticks(xnew)
+# 		if xticks:
+# 			plt.xticks(xnew)
 
-		plt.show()
+# 		plt.show()
 
-		if xticks:
-			plt.xticks(x)
+# 		if xticks:
+# 			plt.xticks(x)
 
-		plt.ylim(y_smooth.min() - 0.1, max(1, y_smooth.max()) + 0.1)
-		plt.xlabel(xlabel)
-		plt.ylabel(ylabel)
-		plt.title(title)
-		plt.grid(True)
+# 		plt.ylim(y_smooth.min() - 0.1, max(1, y_smooth.max()) + 0.1)
+# 		plt.xlabel(xlabel)
+# 		plt.ylabel(ylabel)
+# 		plt.title(title)
+# 		plt.grid(True)
 
-	@staticmethod
-	def _legend(legend, columns):
+# 	@staticmethod
+# 	def _legend(legend, columns):
 
-		if legend is None:
-			pass
-		elif legend == 'empty':
-			plt.legend()
-		else:
-			plt.legend(columns, **legend)
+# 		if legend is None:
+# 			pass
+# 		elif legend == 'empty':
+# 			plt.legend()
+# 		else:
+# 			plt.legend(columns, **legend)
 
-	@staticmethod
-	def _fixing_x_axis(index):
-		return index.map(lambda x: int(x.replace('NL', ''))) if isinstance(index[0], str) else index.to_numpy()
+# 	@staticmethod
+# 	def _fixing_x_axis(index):
+# 		return index.map(lambda x: int(x.replace('NL', ''))) if isinstance(index[0], str) else index.to_numpy()
 
-	@staticmethod
-	def _show_markers(show_markers, columns, x, y):
-		if show_markers in (params.ProposedTechniqueNames.PROPOSED, True):
-			cl = [i for i, x in enumerate(columns) if (params.ProposedTechniqueNames.PROPOSED in x) or ('method' in x)]
-			plt.plot(x, y[:, cl], 'o')
+# 	@staticmethod
+# 	def _show_markers(show_markers, columns, x, y):
+# 		if show_markers in (params.ProposedTechniqueNames.PROPOSED, True):
+# 			cl = [i for i, x in enumerate(columns) if (params.ProposedTechniqueNames.PROPOSED in x) or ('method' in x)]
+# 			plt.plot(x, y[:, cl], 'o')
 
-		elif show_markers == 'all':
-			plt.plot(x, y, 'o')
+# 		elif show_markers == 'all':
+# 			plt.plot(x, y, 'o')
 
