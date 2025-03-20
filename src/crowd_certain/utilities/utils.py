@@ -1,6 +1,7 @@
 # Standard library imports
 import functools
 import multiprocessing
+import stat
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -33,7 +34,7 @@ class ClassifierTraining:
 	def train_classifier(self, sim_num: int):
 		pass
 
-	def get_classifier(self, sim_num: int, random_state: int=0):
+	def get_classifier(self, simulation_number: int, random_state: int=0):
 		"""
 		Returns a classifier based on the simulation method configuration.
 
@@ -49,10 +50,10 @@ class ClassifierTraining:
 			sklearn estimator: A classifier instance configured according to the simulation method.
 		"""
 		if self.config.simulation.simulation_methods is params.SimulationMethods.RANDOM_STATES:
-			return self.get_random_forest_ensemble(random_state=random_state, sim_num=sim_num)
+			return self.get_random_forest_ensemble(random_state=random_state, simulation_number=simulation_number)
 
 		elif self.config.simulation.simulation_methods is params.SimulationMethods.MULTIPLE_CLASSIFIERS:
-			return self.classifiers_list[sim_num]
+			return self.classifiers_list[simulation_number % self.n_classifiers]
 
 		raise ValueError(f"Invalid simulation method: {self.config.simulation.simulation_methods}")
 
@@ -70,11 +71,11 @@ class ClassifierTraining:
 
 		raise ValueError(f"Invalid simulation method: {self.config.simulation.simulation_methods}")
 
-	def get_random_forest_ensemble(self, random_state: int, sim_num: int):
+	def get_random_forest_ensemble(self, random_state: int, simulation_number: int):
 		return sk_ensemble.RandomForestClassifier(
 			n_estimators=4,
 			max_depth=4,
-			random_state=random_state * sim_num,
+			random_state=random_state * simulation_number,
 			n_jobs=-1  # Use all available processors for parallel training
 		)
 
@@ -91,14 +92,14 @@ class ClassifierTraining:
 			from sklearn.tree import DecisionTreeClassifier
 
 			self._classifiers_list = {
-				1: KNeighborsClassifier(3, n_jobs=-1),  # Add parallel processing
-				2: SVC(gamma=2, C=1, probability=True),
-				3: DecisionTreeClassifier(max_depth=5),
-				4: RandomForestClassifier(max_depth=5, n_estimators=10, max_features=1, n_jobs=-1),
-				5: MLPClassifier(alpha=1, max_iter=1000),
-				6: AdaBoostClassifier(),
-				7: GaussianNB(),
-				8: QuadraticDiscriminantAnalysis()}
+				0: KNeighborsClassifier(3, n_jobs=-1),  # Add parallel processing
+				1: SVC(gamma=2, C=1, probability=True),
+				2: DecisionTreeClassifier(max_depth=5),
+				3: RandomForestClassifier(max_depth=5, n_estimators=10, max_features=1, n_jobs=-1),
+				4: MLPClassifier(alpha=1, max_iter=1000),
+				5: AdaBoostClassifier(),
+				6: GaussianNB(),
+				7: QuadraticDiscriminantAnalysis()}
 
 		return self._classifiers_list
 
@@ -318,10 +319,18 @@ class CrowdCertainOrchestrator:
 			Note: A separate boolean flag is used for use_parallelization_benchmarks.
 			This will ensure we only apply parallelization when called through worker_weight_strength_relation function """
 
+		# TODO: change the data['train'] and data['test'] to have two elements: truth and feature_columns. instead of passing the feature_columns everytime
+
+
 		aim1_3 = cls(data=data, config=config, feature_columns=feature_columns, n_workers=n_workers, seed=seed)
 
 		# calculating uncertainty and predicted probability values
-		preds_all, uncertainties_all, true_labels, workers_strength = aim1_3.aim1_3_meauring_probs_uncertainties()
+		preds_all, uncertainties_all, true_labels, workers_strength = ReliabilityCalculator.meauring_probs_uncertainties(config=config, n_workers=n_workers, seed=seed, data=data, feature_columns=feature_columns)
+
+		# TODO: edited until here
+
+		# Adding accuracy for each worker and adding it to workers_strength
+		workers_strength = CalculateMetrics.adding_accuracy_for_each_worker(n_workers=n_workers, preds=classifiers_preds, truth=workers_labels, workers_strength=workers_strength)
 
 		# Calculating weights for proposed techniques and TAO & Sheng benchmarks
 		weights = CalculateWeights.get_weights( workers_labels    = preds_all['test']['simulation_0'],
@@ -1001,79 +1010,90 @@ class ReliabilityCalculator:
 		self.seed = seed
 
 	@staticmethod
-	def calculate_uncertainties(df: pd.DataFrame, config: 'Settings') -> pd.DataFrame:
+	def calculate_uncertainty(df: pd.DataFrame, config: 'Settings') -> pd.DataFrame:
 		"""
-		Calculate various uncertainty metrics for a DataFrame.
+		Calculate uncertainty metrics for the given DataFrame based on configuration settings.
 
-		This method calculates different uncertainty metrics for each row in the provided DataFrame.
-		The metrics are specified in the configuration and can include standard deviation,
-		entropy, coefficient of variation, prediction interval, and confidence interval.
+		This function computes various uncertainty measures across rows of data, where each row
+		represents a sample and each column represents a different simulation's prediction.
 
-		Parameters
-		----------
+		Parameters:
+		-----------
 		df : pd.DataFrame
-			DataFrame containing values for which uncertainty needs to be calculated.
-			Each row represents one item, and columns represent different predictions or values.
-			Values should be convertible to integers.
+			Input DataFrame containing integer values, where each row is a sample for one worker and
+			each column represents a different simulation's prediction.
 
-		Returns
-		-------
+		config : Settings
+			Configuration object containing settings for uncertainty calculation,
+			particularly the list of uncertainty techniques to apply.
+
+		Returns:
+		--------
 		pd.DataFrame
-			DataFrame containing calculated uncertainty values for each row in the input DataFrame.
-			Each column corresponds to one uncertainty technique specified in the configuration.
-			The columns are named according to the value attribute of the uncertainty technique enum.
+			A DataFrame with the same index as the input df, containing columns for each
+			requested uncertainty measure. Available uncertainty techniques include:
+			- STD: Standard deviation across annotations
+			- ENTROPY: Normalized Shannon entropy of the annotations
+			- CV: Coefficient of variation (std/mean), normalized with tanh to [0,1]
+			- PI: Prediction interval (difference between 75th and 25th percentiles)
+			- CI: 95% confidence interval width using t-distribution
 
-		Notes
-		-----
-		- The entropy measure is normalized to fall between 0 and 1.
-		- The coefficient of variation (CV) is transformed using hyperbolic tangent to bound it between 0 and 1.
-		- For confidence interval calculation, rows with zero standard deviation will have NaN values, which are then filled with zeros.
+		Notes:
+		------
+		The function handles edge cases with zero values by adding a small epsilon to denominators
+		and log arguments to avoid division by zero or undefined logarithms.
 		"""
+
+		df_uncertainties = pd.DataFrame(columns=[tech.value for tech in config.technique.uncertainty_techniques], index=df.index)
+
+		if len(df.columns) <= 1:
+			raise ValueError("Input DataFrame must have at least two columns.")
+			return df_uncertainties
+
 
 		epsilon = np.finfo(float).eps
-		df = df.astype(int)
 
-		df_uncertainties = pd.DataFrame(columns=[l.value for l in config.technique.uncertainty_techniques], index=df.index)
+		# Convert to integer (0 or 1)
+		df = (df > 0.5).astype(int)
 
 		for tech in config.technique.uncertainty_techniques:
 
 			if tech is params.UncertaintyTechniques.STD:
-				df_uncertainties[tech.value] = df.std( axis=1 )
+				df_uncertainties[tech.value] = df.std(axis=1)
 
 			elif tech is params.UncertaintyTechniques.ENTROPY:
 				# Normalize each row to sum to 1
 				df_normalized = df.div(df.sum(axis=1) + epsilon, axis=0)
-				# Calculate entropy
-				entropy = - (df_normalized * np.log(df_normalized + epsilon)).sum(axis=1)
-				# entropy = df.apply(lambda x: scipy.stats.entropy(x), axis=1).fillna(0)
-
-				# normalizing entropy values to be between 0 and 1
+				# Calculate entropy with logarithm base e
+				entropy = -(df_normalized * np.log(df_normalized + epsilon)).sum(axis=1)
+				# Normalize entropy to [0, 1] by dividing by log(n)
 				df_uncertainties[tech.value] = entropy / np.log(df.shape[1])
 
 			elif tech is params.UncertaintyTechniques.CV:
-				# The coefficient of variation (CoV) is a measure of relative variability. It is defined as the ratio of the standard deviation. CoV doesn't have an upper bound, but it's always non-negative. Normalizing CoV to a range of [0, 1] isn't straightforward because it can theoretically take any non-negative value. A common approach is to use a transformation that asymptotically approaches 1 as CoV increases. However, the choice of transformation can be somewhat arbitrary and may depend on the context of your data. One simple approach is to use a bounded function like the hyperbolic tangent:
-
-				coefficient_of_variation = df.std(axis=1) / (df.mean(axis=1) + epsilon)
-				df_uncertainties[tech.value] = np.tanh(coefficient_of_variation)
+				# Coefficient of variation: std/mean, normalized with tanh to bound [0, 1]
+				cv = df.std(axis=1) / (df.mean(axis=1) + epsilon)
+				df_uncertainties[tech.value] = np.tanh(cv)
 
 			elif tech is params.UncertaintyTechniques.PI:
-				df_uncertainties[tech.value] = df.apply(lambda row: np.percentile(row.astype(int), 75) - np.percentile(row.astype(int), 25), axis=1)
+				# Prediction interval: difference between 75th and 25th percentiles
+				q75 = np.percentile(df, 75, axis=1)
+				q25 = np.percentile(df, 25, axis=1)
+				df_uncertainties[tech.value] = q75 - q25
 
 			elif tech is params.UncertaintyTechniques.CI:
-				# Lower Bound: This is the first value in the tuple. It indicates the lower end of the range. If you have a 95% confidence interval, this means that you can be 95% confident that the true population mean is greater than or equal to this value.
+				# Calculate 95% confidence interval width using t-distribution, which is more appropriate for small sample sizes
+				stds = df.std(axis=1)
+				n = df.shape[1]
+				t_critical = scipy.stats.t.ppf(0.975, n-1)  # 95% CI uses 0.975 (two-tailed)
 
-				# Upper Bound: This is the second value in the tuple. It represents the upper end of the range. Continuing with the 95% confidence interval example, you can be 95% confident that the true population mean is less than or equal to this value.
+				# Calculate margin of error
+				margin = t_critical * stds / np.sqrt(n)
 
-				confidene_interval = df.apply(lambda row: scipy.stats.norm.interval(0.95, loc=np.mean(row), scale=scipy.stats.sem(row)) if np.std(row) > 0 else (np.nan, np.nan),axis=1).apply(pd.Series)
+				# Calculate CI width (upper - lower)
+				ci_width = 2 * margin
 
-				# Calculate the width of the confidence interval (uncertainty score)
-				weight = confidene_interval[1] - confidene_interval[0]
-
-				# Optional: Normalize by the mean or another relevant value,
-				# For example, normalize by the midpoint of the interval
-				# midpoint = (confidene_interval[1] + confidene_interval[0]) / 2
-
-				df_uncertainties[tech.value] = weight.fillna(0) # / midpoint
+				# Handle cases with zero standard deviation
+				df_uncertainties[tech.value] = ci_width.fillna(0)
 
 		return df_uncertainties
 
@@ -1117,260 +1137,118 @@ class ReliabilityCalculator:
 
 		return consistency
 
-	@staticmethod
-	def assigning_strengths_randomly_to_each_worker(n_workers: int, config: 'Settings'):
-
-		workers_names = [f'worker_{j}' for j in range(n_workers)]
-
-		workers_strength_array = np.random.uniform(low=config.simulation.low_dis, high=config.simulation.high_dis, size=n_workers)
-
-		return pd.DataFrame({'workers_strength': workers_strength_array}, index=workers_names)
-
 
 	@staticmethod
-	def aim1_3_meauring_probs_uncertainties(config: 'Settings', n_workers: int, seed: int, data: pd.DataFrame, feature_columns: list[str]):
+	def meauring_probs_uncertainties(config: 'Settings', n_workers: int, data: dict[str, pd.DataFrame], feature_columns: list[str], seed: int) -> tuple[ pd.DataFrame, Dict[str, pd.DataFrame] , Dict[str, Dict[str, pd.DataFrame]] , Dict[str, Dict[str, pd.DataFrame]] ]:
 
-		def looping_over_all_workers():
+		# Assigning strengths randomly to each worker
+		workers_reliabilities, workers_labels = WorkersGeneration.generate(config=config, data=data, n_workers=n_workers)
 
-			nonlocal workers_strength, preds, truth, uncertainties
+		# Calculating classifiers predictions for all workers
+		classifiers_preds = ReliabilityCalculator.calculate_classifiers_preds_for_all_workers( data=data, config=config, feature_columns=feature_columns, workers_labels=workers_labels, seed=seed)
 
-			def initialize_variables():
-				"""
-				Initialize data structures for storing prediction results, ground truth, and uncertainties.
+		# Calculating uncertainties for all workers
+		uncertainties = ReliabilityCalculator.calculate_uncertainties_for_all_workers(classifiers_preds_all_workers=classifiers_preds, config=config)
 
-				Returns:
-					tuple: A tuple containing:
-						- predicted_labels_all_sims (dict): Dictionary with 'train' and 'test' keys, where each contains simulation results
-						- truth (dict): Dictionary with 'train' and 'test' keys, each containing a pandas DataFrame for ground truth values
-						- uncertainties (dict): Dictionary with 'train' and 'test' keys, each containing a pandas DataFrame with a MultiIndex
-							of worker IDs and uncertainty techniques
-
-				Note:
-					This function uses nonlocal variables that must be defined in the outer scope.
-					The uncertainties DataFrame will have columns based on the worker IDs and configured uncertainty techniques.
-				"""
-				nonlocal predicted_labels_all_sims, truth, uncertainties
-
-				predicted_labels_all_sims = {'train': {}, 'test': {}}
-
-				truth = { 'train': pd.DataFrame(), 'test': pd.DataFrame() }
-
-				columns = pd.MultiIndex.from_product([workers_strength.index, [l.value for l in config.technique.uncertainty_techniques]], names=['worker', 'uncertainty_technique'])
-
-				uncertainties = { 'train': pd.DataFrame(columns=columns), 'test': pd.DataFrame(columns=columns) }
-
-				return predicted_labels_all_sims, truth, uncertainties
-
-			def update_noisy_labels():
-				"""
-				Updates noisy labels for simulation by introducing controlled inaccuracies in true labels based
-				on worker strength.
-
-				The function manipulates the global variables predicted_labels_all_sims and truth, creating
-				noisy versions of the ground truth labels for both training and test datasets. The noise level
-				is determined by the worker's strength parameter, where lower strength values result in more
-				label errors.
-
-				Note:
-					This function uses nonlocal variables and modifies them directly.
-
-				Internal Functions:
-					getting_noisy_manual_labels_for_each_worker: Creates noisy versions of true labels
-					by flipping some labels based on the labeler's strength parameter.
-
-				Side Effects:
-					- Updates predicted_labels_all_sims with empty dictionaries for the current labeler
-					- Updates truth dictionary with both original and noisy versions of labels for train and test sets
-				"""
-				nonlocal predicted_labels_all_sims, truth
-
-				def getting_noisy_manual_labels_for_each_worker(truth_array: np.ndarray, l_strength: float):
-					"""
-					Generate noisy labels by flipping true labels with a probability determined by labeling strength.
-
-					This function simulates worker annotations by introducing noise to ground truth labels.
-					Each sample has a probability of (1 - l_strength) to have its true label flipped.
-
-					Parameters
-					----------
-					truth_array : np.ndarray
-						Array of ground truth probabilities/scores for each sample.
-						Shape: (num_samples,)
-
-					l_strength : float
-						Labeling strength parameter in range [0,1].
-						Higher values mean more accurate labels (less noise).
-						At l_strength=1, no labels are flipped.
-						At l_strength=0, all labels are flipped.
-
-					Returns
-					-------
-					np.ndarray
-						Binary array of noisy labels where some true labels are flipped based on l_strength.
-						Shape: (num_samples,)
-
-					Notes
-					-----
-					The function first converts truth_array to binary labels using a 0.5 threshold,
-					then randomly flips some labels based on the labeling strength parameter.
-					"""
-
-					# number of samples and workers/workers
-					num_samples = truth_array.shape[0]
-
-					# finding a random number for each instance
-					true_label_assignment_prob = np.random.random(num_samples)
-
-					# samples that will have an inaccurate true label
-					false_samples = true_label_assignment_prob < 1 - l_strength
-
-					# measuring the new labels for each worker/worker
-					worker_truth = truth_array > 0.5
-					worker_truth[false_samples] = ~ worker_truth[false_samples]
-
-					return worker_truth
+		return workers_reliabilities, workers_labels, uncertainties, classifiers_preds
 
 
-				# Initializationn
-				for mode in ['train', 'test']:
-					predicted_labels_all_sims[mode][LB] = {}
-					truth[mode]['truth'] = data[mode].true.copy()
 
-				# Extracting the simulated noisy manual labels based on the worker's strength
-				# TODO: check if the seed_num should be LB_index instead of 0 an 1
-				truth['train'][LB] = getting_noisy_manual_labels_for_each_worker( truth_array=data['train'].true.values, l_strength=workers_strength.T[LB].values )
-				truth['test'][LB]  = getting_noisy_manual_labels_for_each_worker( truth_array=data['test'].true.values, l_strength=workers_strength.T[LB].values )
 
-			def update_predicted_labels_all_sims(LB, sim_num):
-				"""
-				Predicts labels for both training and test data using trained classifiers.
+	@staticmethod
+	def calculate_classifiers_preds_for_all_workers(data: dict[str, pd.DataFrame], config: 'Settings', feature_columns: list[str], workers_labels: dict[str, pd.DataFrame], seed: int) -> dict[str, dict[str, pd.DataFrame]]:
+		"""
+			Predicts labels for both training and test data using trained classifiers.
 
-				This function trains a classifier based on the simulation method specified in the configuration
-				and uses it to predict labels for both training and test datasets. The predictions are stored
-				in the `predicted_labels_all_sims` dictionary.
+			This function trains a classifier based on the simulation method specified in the configuration
+			and uses it to predict labels for both training and test datasets. The predictions are stored
+			in the `predicted_labels_all_sims` dictionary.
 
-				Parameters:
-				----------
-				LB : str
-					The label column name to be predicted.
-				sim_num : int
-					The simulation number/index used to determine the classifier or its random state.
+			Parameters:
+			----------
+			data : dict[str, pd.DataFrame]
+				The dataset containing training and test data.
+			config : 'Settings'
+				The configuration object containing simulation settings.
+			feature_columns : list[str]
+				List of feature columns to be used for training classifiers.
+			workers_labels : dict[str, pd.DataFrame]
+				Dictionary containing ground truth labels for each worker.
+			seed : int
+				Random seed for classifier training.
 
-				Notes:
-				-----
-				The function uses the nonlocal variable `predicted_labels_all_sims` to store prediction results.
-				Predictions are organized by mode ('train' or 'test'), label column (LB), and simulation number.
+			Returns:
+			--------
+				dict[str, dict[str, dict[str, pd.DataFrame]]]
+				Dictionary containing predicted labels for both training and test data.
+		"""
+		def calculate_classifiers_preds_for_one_worker(workers_name: str) -> dict[str, pd.DataFrame]:
+			output = { 'train': pd.DataFrame(index=data['train'].index),
+						'test': pd.DataFrame(index=data['test'].index)}
 
-				For params.SimulationMethods.RANDOM_STATES, it uses a RandomForestClassifier with varying random states.
-				For params.SimulationMethods.MULTIPLE_CLASSIFIERS, it selects different classifier types from a predefined list.
-				"""
-
-				nonlocal predicted_labels_all_sims
+			for sim_num in range(config.simulation.num_simulations):
 
 				# training a random forest on the aformentioned labels
-				classifier = ClassifierTraining(config=config).get_classifier(sim_num=sim_num, random_state=seed)
+				classifier = ClassifierTraining(config=config).get_classifier(simulation_number=sim_num, random_state=seed)
 
-				classifier.fit( X=data['train'][feature_columns], y=truth['train'][LB] )
+				classifier.fit( X=data['train'][feature_columns], y=workers_labels['train'][workers_name] )
 
-				for mode in ['train', 'test']:
-					predicted_labels_all_sims[mode][LB] [ f'simulation_{sim_num}' ] = classifier.predict(data[mode][feature_columns])
+				# This assumes the outputs of the classifier are pandas Series
+				output['train'][ f'simulation_{sim_num}' ] = classifier.predict(data['train'][feature_columns])
+				output['test'][  f'simulation_{sim_num}' ] = classifier.predict(data['test'][feature_columns])
 
-			def update_uncertainties(LB):
-				"""
-				Updates the uncertainties and predicted labels for a specific label for both training and test data.
+			return output
 
-				This function processes the prediction results across all simulations for a given label (LB).
-				It converts the predictions to pandas DataFrame format, calculates uncertainties for each worker
-				across all simulations, and computes the majority vote prediction for each item.
+		# Getting the list of worker identifiers (excluding 'truth')
+		workers_names = set(workers_labels['train'].columns).difference({'truth'})
 
-				Parameters
-				----------
-				LB : str
-					The label identifier for which uncertainties need to be updated.
-
-				Notes
-				-----
-				This function uses nonlocal variables:
-				- predicted_labels_all_sims: Dictionary containing prediction results for all simulations
-				- uncertainties: Dictionary to store calculated uncertainty values
-
-				The function processes both 'train' and 'test' modes separately.
-				"""
-				nonlocal predicted_labels_all_sims, uncertainties
-
-				# Measuring the prediction and uncertainties values after MV over all simulations
-				for mode in ['train', 'test']:
-					# converting to dataframe
-					predicted_labels_all_sims[mode][LB] = pd.DataFrame(predicted_labels_all_sims[mode][LB], index=data[mode].index)
-
-					# uncertainties for each worker over all simulations
-					uncertainties[mode][LB] = ReliabilityCalculator.calculate_uncertainties(df=predicted_labels_all_sims[mode][LB], config=	config)
-
-					# predicted probability of each class after MV over all simulations
-					predicted_labels_all_sims[mode][LB]['mv'] = ( predicted_labels_all_sims[mode][LB].mean(axis=1) > 0.5)
-
-			def swap_axes(predicted_labels_all_sims) -> dict[str, dict[str, pd.DataFrame]]:
-				"""
-				Swaps the axes of the predicted labels dataframe organization.
-
-				Transforms the structure from {mode: {worker: {simulation: predictions}}} to
-				{mode: {simulation: dataframe}}, where each dataframe has workers as columns.
-
-				Parameters
-				----------
-				predicted_labels_all_sims : dict
-					A nested dictionary structure containing predicted labels organized by
-					training/test mode, workers, and simulations.
-
-				Returns
-				-------
-				dict[str, dict[str, pd.DataFrame]]
-					Reorganized predictions where:
-					- First level keys are 'train' and 'test'
-					- Second level keys are simulation identifiers ('simulation_0', ..., 'mv')
-					- Values are pandas DataFrames with workers as columns and samples as rows
-				"""
-
-				# reshaping the dataframes
-				preds_swaped: dict[str, dict[str, pd.DataFrame]] = { 'train': defaultdict(pd.DataFrame), 'test': defaultdict(pd.DataFrame) }
-
-				for mode in ['train', 'test']:
-
-					# reversing the order of simulations and workers. NOTE: for the final experiment I should use simulation_0. if I use the mv, then because the augmented truths keeps changing in each simulation, then with enough simulations, I'll end up witht perfect workers.
-					for i in range(config.simulation.num_simulations + 1):
-
-						SM = f'simulation_{i}' if i < config.simulation.num_simulations else 'mv'
-
-						preds_swaped[mode][SM] = pd.DataFrame()
-						for LBx in [f'worker_{j}' for j in range( n_workers )]:
-							preds_swaped[mode][SM][LBx] = predicted_labels_all_sims[mode][LBx][SM]
-
-				return preds_swaped
+		return {wsi: calculate_classifiers_preds_for_one_worker(workers_name=wsi) for wsi in workers_names}
 
 
-			predicted_labels_all_sims, truth, uncertainties = initialize_variables()
+	@staticmethod
+	def calculate_uncertainties_for_all_workers(classifiers_preds_all_workers: Dict[str, Dict[str, pd.DataFrame]], config: 'Settings') -> Dict[str, Dict[str, pd.DataFrame]]:
+		"""
+		Calculate uncertainties for all workers based on classifier predictions across simulations.
 
-			for LB_index, LB in enumerate(workers_strength.index):
+		This function computes uncertainty metrics for each worker by processing their predictions
+		from multiple simulations, for both training and testing datasets.
 
-				update_noisy_labels()
+		Parameters
+		----------
+		classifiers_preds_all_simulations : Dict[str, Dict[str, Dict[str, pd.DataFrame]]]
+			A nested dictionary structure containing classifier predictions for all simulations.
+			The hierarchy is: {worker_id -> {split_type -> {simulation_id -> DataFrame}}},
+			where split_type is either 'train' or 'test'.
 
-				for sim_num in range(classifier_training(config=config).n_simulations):
-					update_predicted_labels_all_sims(LB=LB, sim_num=sim_num)
+		config : Settings
+			Configuration object containing settings for uncertainty calculation.
 
-				update_uncertainties(LB)
+		Returns
+		-------
+		Dict[str, Dict[str, pd.DataFrame]]
+			A dictionary mapping worker IDs to their uncertainty metrics for both training and testing data.
+			Structure: {worker_id -> {'train': DataFrame, 'test': DataFrame}},
+			where each DataFrame contains the calculated uncertainty metrics.
+		"""
 
-			preds = swap_axes(predicted_labels_all_sims)
+		uncertainties: Dict[str, Dict[str, pd.DataFrame]] = {}
 
-			return truth, uncertainties, preds
+		# Loop over each worker
+		for wsi in classifiers_preds_all_workers:
 
-		workers_strength = ReliabilityCalculator.assigning_strengths_randomly_to_each_worker(n_workers=n_workers, config=config)
+			# uncertainties for each worker over all simulations
+			uncertainties[wsi] = {
+				'train': ReliabilityCalculator.calculate_uncertainty(df=classifiers_preds_all_workers[wsi]['train'], config=config),
+				'test':  ReliabilityCalculator.calculate_uncertainty(df=classifiers_preds_all_workers[wsi]['test'] , config=config)
+			}
 
-		truth, uncertainties, preds = looping_over_all_workers()
+		return uncertainties
 
-		ReliabilityCalculator.adding_accuracy_for_each_worker(n_workers=n_workers, preds=preds, truth=truth, workers_strength=workers_strength)
 
-		return preds, uncertainties, truth, workers_strength
+class CalculateMetrics:
 
+	def __init__(self, config: 'Settings'):
+		self.config = config
 
 	@staticmethod
 	def adding_accuracy_for_each_worker(n_workers: int, preds: pd.DataFrame, truth: pd.DataFrame, workers_strength: pd.DataFrame):
@@ -1402,3 +1280,102 @@ class ReliabilityCalculator:
 			workers_strength.loc[LB, 'accuracy-test'] 		     = ( truth['test'][LB] == truth['test'].truth).mean()
 
 		return workers_strength
+
+
+class WorkersGeneration:
+
+	def __init__(self, config: 'Settings', n_workers: int):
+		self.config = config
+		self.n_workers= n_workers
+		self.workers_assigned_reliabilities: pd.Series = None
+		self.workers_labels: Dict[str, pd.DataFrame] = None
+
+	def assign_reliabilities_to_each_worker(self) -> 'WorkersGeneration':
+		"""
+		Assigns reliability values to each worker in the simulation.
+
+		This method generates random reliability values for each worker within the range specified in the
+		configuration (low_dis to high_dis). The reliability values are then assigned to each worker and
+		stored in a pandas Series indexed by worker IDs.
+
+		Returns:
+			pd.Series: A pandas Series containing the reliability values for each worker.
+		"""
+
+		# Generating a random number between low_dis and high_dis for each worker
+		workers_reliabilities_array = np.random.uniform(low=self.config.simulation.low_dis, high=self.config.simulation.high_dis, size=self.n_workers)
+
+		# Assigning reliabilities to each worker
+		self.workers_assigned_reliabilities = pd.Series(workers_reliabilities_array, index=[f'worker_{j}' for j in range(self.n_workers)])
+
+		return self
+
+	def create_worker_label_set(self, data: Dict[str, pd.DataFrame]) -> 'WorkersGeneration':
+
+		def getting_noisy_manual_labels_for_each_worker(truth_array: np.ndarray, worker_reliability: float) -> np.ndarray:
+			"""
+			Simulates noisy manual labeling process by introducing randomized errors to true labels.
+
+			This function takes a ground truth array and simulates the behavior of an annotator with
+			a specified strength (accuracy) level. The annotator will correctly label samples with a
+			probability equal to their reliability (w_strength), and incorrectly label them otherwise.
+
+			Parameters
+			----------
+			truth_array : np.ndarray
+				Array of ground truth values (typically binary or probabilities that can be thresholded).
+				Shape is (num_samples,).
+			worker_reliability : float
+				Worker/annotator reliability as a probability between 0 and 1.
+				Higher values indicate more reliable workers who make fewer mistakes.
+
+			Returns
+			-------
+			np.ndarray
+				Binary array of the same shape as truth_array containing the worker's noisy labels.
+				1s represent positive class assignments, 0s represent negative class assignments.
+
+			Notes
+			-----
+			The function works by:
+			1. Determining which samples will be incorrectly labeled based on worker reliability
+			2. Converting truth_array to binary labels (thresholding at 0.5)
+			3. Flipping the binary labels for samples identified as incorrectly labeled
+			"""
+
+
+			# number of samples and workers/workers
+			num_samples = truth_array.shape[0]
+
+			# finding a random number for each instance
+			true_label_assignment_prob = np.random.random(num_samples)
+
+			# samples that will have an inaccurate true label
+			false_samples = true_label_assignment_prob < 1 - worker_reliability
+
+			# measuring the new labels for each worker/worker
+			worker_truth = truth_array > 0.5
+			worker_truth[false_samples] = ~ worker_truth[false_samples]
+
+			return worker_truth
+
+		def do_generate(mdata: pd.DataFrame) -> pd.DataFrame:
+			workers_labels = pd.DataFrame({'truth': mdata.true}, index=mdata.index)
+
+			for wsi, worker_reliability in self.workers_assigned_reliabilities.items():
+				workers_labels[wsi] = getting_noisy_manual_labels_for_each_worker(truth_array=mdata.true.to_numpy(), worker_reliability=worker_reliability)
+
+			return workers_labels
+
+		self.workers_labels: Dict[str, pd.DataFrame] = {mode: do_generate(mdata=data[mode]) for mode in ['train', 'test']}
+
+		return self
+
+	@classmethod
+	def generate(cls, config: 'Settings', data: Dict[str, pd.DataFrame], n_workers: int) -> Tuple[pd.Series, Dict[str, pd.DataFrame]]:
+
+		WG = cls(config=config, n_workers=n_workers)
+		WG.assign_reliabilities_to_each_worker()
+		WG.create_worker_label_set(data=data)
+
+		return WG.workers_assigned_reliabilities, WG.workers_labels
