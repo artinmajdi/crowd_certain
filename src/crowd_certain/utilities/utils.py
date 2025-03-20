@@ -72,11 +72,11 @@ class ClassifierTraining:
 
 	def get_random_forest_ensemble(self, random_state: int, sim_num: int):
 		return sk_ensemble.RandomForestClassifier(
-            n_estimators=4,
-            max_depth=4,
-            random_state=random_state * sim_num,
-            n_jobs=-1  # Use all available processors for parallel training
-        )
+			n_estimators=4,
+			max_depth=4,
+			random_state=random_state * sim_num,
+			n_jobs=-1  # Use all available processors for parallel training
+		)
 
 	@property
 	def classifiers_list(self):
@@ -103,530 +103,32 @@ class ClassifierTraining:
 		return self._classifiers_list
 
 
-class ReliabilityCalculator:
-	def __init__(self, config: 'Settings'):
-		self.config = config
-
-
-	def calculate_uncertainties(self, df: pd.DataFrame) -> pd.DataFrame:
-		"""
-		Calculate various uncertainty metrics for a DataFrame.
-
-		This method calculates different uncertainty metrics for each row in the provided DataFrame.
-		The metrics are specified in the configuration and can include standard deviation,
-		entropy, coefficient of variation, prediction interval, and confidence interval.
-
-		Parameters
-		----------
-		df : pd.DataFrame
-			DataFrame containing values for which uncertainty needs to be calculated.
-			Each row represents one item, and columns represent different predictions or values.
-			Values should be convertible to integers.
-
-		Returns
-		-------
-		pd.DataFrame
-			DataFrame containing calculated uncertainty values for each row in the input DataFrame.
-			Each column corresponds to one uncertainty technique specified in the configuration.
-			The columns are named according to the value attribute of the uncertainty technique enum.
-
-		Notes
-		-----
-		- The entropy measure is normalized to fall between 0 and 1.
-		- The coefficient of variation (CV) is transformed using hyperbolic tangent to bound it between 0 and 1.
-		- For confidence interval calculation, rows with zero standard deviation will have NaN values, which are then filled with zeros.
-		"""
-
-		epsilon = np.finfo(float).eps
-		df = df.astype(int)
-
-		df_uncertainties = pd.DataFrame(columns=[tech.value for tech in self.config.technique.uncertainty_techniques], index=df.index)
-
-		for tech in self.config.technique.uncertainty_techniques:
-
-			if tech is params.UncertaintyTechniques.STD:
-				df_uncertainties[tech.value] = df.std( axis=1 )
-
-			elif tech is params.UncertaintyTechniques.ENTROPY:
-				# Normalize each row to sum to 1
-				df_normalized = df.div(df.sum(axis=1) + epsilon, axis=0)
-				# Calculate entropy
-				entropy = - (df_normalized * np.log(df_normalized + epsilon)).sum(axis=1)
-				# entropy = df.apply(lambda x: scipy.stats.entropy(x), axis=1).fillna(0)
-
-				# normalizing entropy values to be between 0 and 1
-				df_uncertainties[tech.value] = entropy / np.log(df.shape[1])
-
-			elif tech is params.UncertaintyTechniques.CV:
-				# The coefficient of variation (CoV) is a measure of relative variability. It is defined as the ratio of the standard deviation. CoV doesn't have an upper bound, but it's always non-negative. Normalizing CoV to a range of [0, 1] isn't straightforward because it can theoretically take any non-negative value. A common approach is to use a transformation that asymptotically approaches 1 as CoV increases. However, the choice of transformation can be somewhat arbitrary and may depend on the context of your data. One simple approach is to use a bounded function like the hyperbolic tangent:
-
-				coefficient_of_variation = df.std(axis=1) / (df.mean(axis=1) + epsilon)
-				df_uncertainties[tech.value] = np.tanh(coefficient_of_variation)
-
-			elif tech is params.UncertaintyTechniques.PI:
-				df_uncertainties[tech.value] = df.apply(lambda row: np.percentile(row.astype(int), 75) - np.percentile(row.astype(int), 25), axis=1)
-
-			elif tech is params.UncertaintyTechniques.CI:
-				# Lower Bound: This is the first value in the tuple. It indicates the lower end of the range. If you have a 95% confidence interval, this means that you can be 95% confident that the true population mean is greater than or equal to this value.
-
-				# Upper Bound: This is the second value in the tuple. It represents the upper end of the range. Continuing with the 95% confidence interval example, you can be 95% confident that the true population mean is less than or equal to this value.
-
-				confidene_interval = df.apply(lambda row: scipy.stats.norm.interval(0.95, loc=np.mean(row), scale=scipy.stats.sem(row)) if np.std(row) > 0 else (np.nan, np.nan),axis=1).apply(pd.Series)
-
-				# Calculate the width of the confidence interval (uncertainty score)
-				weight = confidene_interval[1] - confidene_interval[0]
-
-				# Optional: Normalize by the mean or another relevant value,
-				# For example, normalize by the midpoint of the interval
-				# midpoint = (confidene_interval[1] + confidene_interval[0]) / 2
-
-				df_uncertainties[tech.value] = weight.fillna(0) # / midpoint
-
-		return df_uncertainties
-
-
-	def aim1_3_meauring_probs_uncertainties(self):
-		"""
-		Simulate workers with varying skill levels and measure their predictions and uncertainties.
-
-		This method performs a simulation where:
-		1. Workers with different strengths (skills) are generated randomly
-		2. These workers provide noisy labels for the data based on their strength
-		3. Classifiers are trained on these noisy labels to make predictions
-		4. Uncertainties are calculated for each worker's predictions
-		5. Different simulation methods can be used (random states or multiple classifiers)
-
-		Returns:
-			tuple: A tuple containing:
-				- preds (dict): Predictions organized by mode ('train'/'test'), simulation, and worker
-				- uncertainties (dict): Uncertainty measures for each worker and uncertainty technique
-				- truth (dict): The true labels and worker-annotated labels
-				- workers_strength (pd.DataFrame): Worker strength information including:
-					* workers_strength: The randomly assigned strength value
-					* accuracy-test-classifier: Accuracy of each worker's classifier on test data
-					* accuracy-test: Accuracy of each worker's noisy labels compared to ground truth
-		"""
-
-		def assigning_strengths_randomly_to_each_worker():
-			"""
-			Generates a dataframe of workers with randomly assigned strength values.
-
-			The function creates a list of worker names and assigns a random strength value
-			to each worker from a uniform distribution defined by the configuration parameters.
-
-			Returns:
-				pandas.DataFrame: A dataframe with worker names as the index and their assigned
-									strength values in a column named 'workers_strength'.
-
-			Note:
-				The strength values are sampled from a uniform distribution with bounds
-				specified by self.config.simulation.low_dis and self.config.simulation.high_dis.
-			"""
-
-			workers_names = [f'worker_{j}' for j in range(self.n_workers)]
-
-			workers_strength_array = np.random.uniform(low=self.config.simulation.low_dis, high=self.config.simulation.high_dis, size=self.n_workers)
-
-			return pd.DataFrame({'workers_strength': workers_strength_array}, index=workers_names)
-
-		def looping_over_all_workers():
-			"""
-			Performs simulations to evaluate worker performance in crowdsourced labeling tasks.
-
-			This function executes a series of simulations that:
-			1. Initializes dataframes for predicted labels, ground truth, and uncertainties
-			2. Generates simulated noisy labels for each worker based on their strength
-			3. Trains classifiers on these noisy labels and makes predictions
-			4. Calculates uncertainty metrics across multiple simulations
-			5. Aggregates results across workers and simulations
-
-			The function uses nested helper functions to modularize the workflow:
-			- initialize_variables: Sets up data structures for storing results
-			- update_noisy_labels: Creates synthetic noisy labels based on worker quality
-			- update_predicted_labels_all_sims: Trains classifiers and makes predictions for each simulation
-			- update_uncertainties: Calculates uncertainty metrics for predictions
-			- get_n_simulations: Determines number of simulations based on config
-			- swap_axes: Reorganizes the prediction results to be grouped by simulation instead of by worker
-
-			Returns:
-				tuple: Contains (truth, uncertainties, preds)
-					- truth: Dict with train/test DataFrames containing ground truth and noisy labels
-					- uncertainties: Dict with train/test DataFrames containing uncertainty metrics per worker
-					- preds: Dict with predictions reorganized by simulation rather than by worker
-			"""
-			nonlocal workers_strength, preds, truth, uncertainties
-
-			def initialize_variables():
-				"""
-				Initialize data structures for storing prediction results, ground truth, and uncertainties.
-
-				Returns:
-					tuple: A tuple containing:
-						- predicted_labels_all_sims (dict): Dictionary with 'train' and 'test' keys, where each contains simulation results
-						- truth (dict): Dictionary with 'train' and 'test' keys, each containing a pandas DataFrame for ground truth values
-						- uncertainties (dict): Dictionary with 'train' and 'test' keys, each containing a pandas DataFrame with a MultiIndex
-							of worker IDs and uncertainty techniques
-
-				Note:
-					This function uses nonlocal variables that must be defined in the outer scope.
-					The uncertainties DataFrame will have columns based on the worker IDs and configured uncertainty techniques.
-				"""
-				nonlocal predicted_labels_all_sims, truth, uncertainties
-
-				predicted_labels_all_sims = {'train': {}, 'test': {}}
-
-				truth = { 'train': pd.DataFrame(), 'test': pd.DataFrame() }
-
-				columns = pd.MultiIndex.from_product([workers_strength.index, [tech.value for tech in self.config.technique.uncertainty_techniques]], names=['worker', 'uncertainty_technique'])
-
-				uncertainties = { 'train': pd.DataFrame(columns=columns), 'test': pd.DataFrame(columns=columns) }
-
-				return predicted_labels_all_sims, truth, uncertainties
-
-			def update_noisy_labels():
-				"""
-				Updates noisy labels for simulation by introducing controlled inaccuracies in true labels based
-				on worker strength.
-
-				The function manipulates the global variables predicted_labels_all_sims and truth, creating
-				noisy versions of the ground truth labels for both training and test datasets. The noise level
-				is determined by the worker's strength parameter, where lower strength values result in more
-				label errors.
-
-				Note:
-					This function uses nonlocal variables and modifies them directly.
-
-				Internal Functions:
-					getting_noisy_manual_labels_for_each_worker: Creates noisy versions of true labels
-					by flipping some labels based on the labeler's strength parameter.
-
-				Side Effects:
-					- Updates predicted_labels_all_sims with empty dictionaries for the current labeler
-					- Updates truth dictionary with both original and noisy versions of labels for train and test sets
-				"""
-				nonlocal predicted_labels_all_sims, truth
-
-				def getting_noisy_manual_labels_for_each_worker(truth_array: np.ndarray, l_strength: float):
-					"""
-					Generate noisy labels by flipping true labels with a probability determined by labeling strength.
-
-					This function simulates worker annotations by introducing noise to ground truth labels.
-					Each sample has a probability of (1 - l_strength) to have its true label flipped.
-
-					Parameters
-					----------
-					truth_array : np.ndarray
-						Array of ground truth probabilities/scores for each sample.
-						Shape: (num_samples,)
-
-					l_strength : float
-						Labeling strength parameter in range [0,1].
-						Higher values mean more accurate labels (less noise).
-						At l_strength=1, no labels are flipped.
-						At l_strength=0, all labels are flipped.
-
-					Returns
-					-------
-					np.ndarray
-						Binary array of noisy labels where some true labels are flipped based on l_strength.
-						Shape: (num_samples,)
-
-					Notes
-					-----
-					The function first converts truth_array to binary labels using a 0.5 threshold,
-					then randomly flips some labels based on the labeling strength parameter.
-					"""
-
-					# number of samples and workers/workers
-					num_samples = truth_array.shape[0]
-
-					# finding a random number for each instance
-					true_label_assignment_prob = np.random.random(num_samples)
-
-					# samples that will have an inaccurate true label
-					false_samples = true_label_assignment_prob < 1 - l_strength
-
-					# measuring the new labels for each worker/worker
-					worker_truth = truth_array > 0.5
-					worker_truth[false_samples] = ~ worker_truth[false_samples]
-
-					return worker_truth
-
-
-				# Initializationn
-				for mode in ['train', 'test']:
-					predicted_labels_all_sims[mode][LB] = {}
-					truth[mode]['truth'] = self.data[mode].true.copy()
-
-				# Extracting the simulated noisy manual labels based on the worker's strength
-				# TODO: check if the seed_num should be LB_index instead of 0 an 1
-				truth['train'][LB] = getting_noisy_manual_labels_for_each_worker( truth_array=self.data['train'].true.values, l_strength=workers_strength.T[LB].values )
-				truth['test'][LB]  = getting_noisy_manual_labels_for_each_worker( truth_array=self.data['test'].true.values, l_strength=workers_strength.T[LB].values )
-
-			def update_predicted_labels_all_sims(LB, sim_num):
-				"""
-				Predicts labels for both training and test data using trained classifiers.
-
-				This function trains a classifier based on the simulation method specified in the configuration
-				and uses it to predict labels for both training and test datasets. The predictions are stored
-				in the `predicted_labels_all_sims` dictionary.
-
-				Parameters:
-				----------
-				LB : str
-					The label column name to be predicted.
-				sim_num : int
-					The simulation number/index used to determine the classifier or its random state.
-
-				Notes:
-				-----
-				The function uses the nonlocal variable `predicted_labels_all_sims` to store prediction results.
-				Predictions are organized by mode ('train' or 'test'), label column (LB), and simulation number.
-
-				For params.SimulationMethods.RANDOM_STATES, it uses a RandomForestClassifier with varying random states.
-				For params.SimulationMethods.MULTIPLE_CLASSIFIERS, it selects different classifier types from a predefined list.
-				"""
-
-				nonlocal predicted_labels_all_sims
-
-				# training a random forest on the aformentioned labels
-				classifier = self.classifier_training.get_classifier(sim_num=sim_num, random_state=self.seed)
-
-				classifier.fit( X=self.data['train'][self.feature_columns], y=truth['train'][LB] )
-
-				for mode in ['train', 'test']:
-					predicted_labels_all_sims[mode][LB] [ f'simulation_{sim_num}' ] = classifier.predict(self.data[mode][self.feature_columns])
-
-			def update_uncertainties(LB):
-				"""
-				Updates the uncertainties and predicted labels for a specific label for both training and test data.
-
-				This function processes the prediction results across all simulations for a given label (LB).
-				It converts the predictions to pandas DataFrame format, calculates uncertainties for each worker
-				across all simulations, and computes the majority vote prediction for each item.
-
-				Parameters
-				----------
-				LB : str
-					The label identifier for which uncertainties need to be updated.
-
-				Notes
-				-----
-				This function uses nonlocal variables:
-				- predicted_labels_all_sims: Dictionary containing prediction results for all simulations
-				- uncertainties: Dictionary to store calculated uncertainty values
-
-				The function processes both 'train' and 'test' modes separately.
-				"""
-				nonlocal predicted_labels_all_sims, uncertainties
-
-				# Measuring the prediction and uncertainties values after MV over all simulations
-				for mode in ['train', 'test']:
-					# converting to dataframe
-					predicted_labels_all_sims[mode][LB] = pd.DataFrame(predicted_labels_all_sims[mode][LB], index=self.data[mode].index)
-
-					# uncertainties for each worker over all simulations
-					uncertainties[mode][LB] = self.calculate_uncertainties(df=predicted_labels_all_sims[mode][LB])
-
-					# predicted probability of each class after MV over all simulations
-					predicted_labels_all_sims[mode][LB]['mv'] = ( predicted_labels_all_sims[mode][LB].mean(axis=1) > 0.5)
-
-			def swap_axes(predicted_labels_all_sims) -> dict[str, dict[str, pd.DataFrame]]:
-				"""
-				Swaps the axes of the predicted labels dataframe organization.
-
-				Transforms the structure from {mode: {worker: {simulation: predictions}}} to
-				{mode: {simulation: dataframe}}, where each dataframe has workers as columns.
-
-				Parameters
-				----------
-				predicted_labels_all_sims : dict
-					A nested dictionary structure containing predicted labels organized by
-					training/test mode, workers, and simulations.
-
-				Returns
-				-------
-				dict[str, dict[str, pd.DataFrame]]
-					Reorganized predictions where:
-					- First level keys are 'train' and 'test'
-					- Second level keys are simulation identifiers ('simulation_0', ..., 'mv')
-					- Values are pandas DataFrames with workers as columns and samples as rows
-				"""
-
-				# reshaping the dataframes
-				preds_swaped: dict[str, dict[str, pd.DataFrame]] = { 'train': defaultdict(pd.DataFrame), 'test': defaultdict(pd.DataFrame) }
-
-				for mode in ['train', 'test']:
-
-					# reversing the order of simulations and workers. NOTE: for the final experiment I should use simulation_0. if I use the mv, then because the augmented truths keeps changing in each simulation, then with enough simulations, I'll end up witht perfect workers.
-					for i in range(self.config.simulation.num_simulations + 1):
-
-						SM = f'simulation_{i}' if i < self.config.simulation.num_simulations else 'mv'
-
-						preds_swaped[mode][SM] = pd.DataFrame()
-						for LBx in [f'worker_{j}' for j in range( self.n_workers )]:
-							preds_swaped[mode][SM][LBx] = predicted_labels_all_sims[mode][LBx][SM]
-
-				return preds_swaped
-
-
-			predicted_labels_all_sims, truth, uncertainties = initialize_variables()
-
-			for LB_index, LB in enumerate(workers_strength.index):
-
-				update_noisy_labels()
-
-				for sim_num in range(self.classifier_training.n_simulations):
-					update_predicted_labels_all_sims(LB=LB, sim_num=sim_num)
-
-				update_uncertainties(LB)
-
-			preds = swap_axes(predicted_labels_all_sims)
-
-			return truth, uncertainties, preds
-
-		def adding_accuracy_for_each_worker():
-			"""
-			Calculate and add accuracy measures for each worker in the crowd-sourcing task.
-
-			This function computes two types of accuracy metrics for each worker:
-			1. 'accuracy-test-classifier': The accuracy of the classifier's predictions against true labels
-				in the test dataset for simulation_0
-			2. 'accuracy-test': The accuracy of each worker's noisy labels against true labels in the
-				test dataset
-
-			The function updates the workers_strength DataFrame with these new accuracy metrics.
-
-			Note:
-				- This is a non-local function that modifies the outer scope variables: workers_strength, preds, and truth
-			"""
-			nonlocal workers_strength, preds, truth
-
-			workers_strength['accuracy-test-classifier'] = 0.0
-			workers_strength['accuracy-test'] = 0.0
-
-			for i in range(self.n_workers):
-				LB = f'worker_{i}'
-
-				# accuracy of classifier in simulation_0
-				workers_strength.loc[LB, 'accuracy-test-classifier'] = ( preds['test']['simulation_0'][LB] == truth['test'].truth).mean()
-
-				# accuracy of noisy true labels for each worker
-				workers_strength.loc[LB, 'accuracy-test'] 		     = ( truth['test'][LB] == truth['test'].truth).mean()
-
-
-		workers_strength = assigning_strengths_randomly_to_each_worker()
-
-		truth, uncertainties, preds = looping_over_all_workers()
-
-		adding_accuracy_for_each_worker()
-
-		return preds, uncertainties, truth, workers_strength
-
-
-	def calculate_consistency(self, uncertainty: Union[pd.DataFrame, pd.Series, np.ndarray]) -> pd.DataFrame:
-		"""
-		Calculates consistency metrics from uncertainty values.
-
-		This method computes consistency scores using different techniques based on the provided uncertainty data.
-		Consistency is the inverse of uncertainty - higher consistency implies lower uncertainty.
-
-		Parameters
-		----------
-		uncertainty : Union[pd.DataFrame, pd.Series, np.ndarray]
-			The uncertainty values to convert to consistency.
-			- If DataFrame: Assumes multi-level columns with uncertainty values
-			- If Series: A simple series of uncertainty values
-			- If ndarray: A numpy array containing uncertainty values
-
-		Returns
-		-------
-		pd.DataFrame
-			A DataFrame containing the calculated consistency values.
-			- If input was DataFrame: Returns multi-level columned DataFrame with consistency techniques as the second level (worker is the highest level)
-			- If input was Series/ndarray: Returns DataFrame with consistency techniques as columns
-
-		Notes
-		-----
-		Supported consistency calculation techniques:
-			- ONE_MINUS_UNCERTAINTY: 1 - uncertainty
-			- ONE_DIVIDED_BY_UNCERTAINTY: 1 / uncertainty (with epsilon to prevent division by zero)
-		"""
-
-		epsilon = np.finfo(float).eps
-
-		# Use dictionary for technique implementations
-		technique_funcs = {
-			params.ConsistencyTechniques.ONE_MINUS_UNCERTAINTY: lambda u: 1 - u,
-			params.ConsistencyTechniques.ONE_DIVIDED_BY_UNCERTAINTY: lambda u: 1 / (u + epsilon)
-		}
-
-		# Extract consistency techniques to apply
-		consistency_techniques = [tech.value for tech in self.config.technique.consistency_techniques]
-
-		if isinstance(uncertainty, pd.DataFrame):
-			# Get unique values at each level while preserving order
-			levels = [list(OrderedDict.fromkeys(uncertainty.columns.get_level_values(i)))
-						for i in range(uncertainty.columns.nlevels)]
-
-			# Create new column structure with consistency_technique as first level
-			new_columns = [consistency_techniques] + levels
-			new_column_names = ['consistency_technique'] + uncertainty.columns.names
-
-			# Initialize result DataFrame
-			columns = pd.MultiIndex.from_product(new_columns, names=new_column_names)
-			consistency = pd.DataFrame(index=uncertainty.index, columns=columns)
-
-			# Apply each technique
-			for tech in self.config.technique.consistency_techniques:
-				consistency[tech.value] = technique_funcs[tech](uncertainty)
-
-			# Make worker the highest level in the columns
-			return consistency.swaplevel(0, 1, axis=1)
-		else:
-			# TODO: delete this multistructure and only preserve either pd.Series or pd.DataFrame (after figuring out how uncertianty calculation works)
-			# Handle Series and ndarray cases
-			index = uncertainty.index if isinstance(uncertainty, pd.Series) else range(len(uncertainty))
-			consistency = pd.DataFrame(index=index, columns=consistency_techniques)
-
-			# Apply each technique
-			for tech in self.config.technique.consistency_techniques:
-				consistency[tech.value] = technique_funcs[tech](uncertainty)
-
-			return consistency
-
-
 @dataclass
 class CrowdCertainOrchestrator:
 	"""
-		Main class for AIM1_3 implementation that handles the calculation of worker weights, uncertainties, and confidence scores
-		for crowdsourced label aggregation.
+	Main class for CrowdCertainOrchestrator implementation that handles the calculation of worker weights, uncertainties, and confidence scores
+	for crowdsourced label aggregation.
 
-		This class implements methods for:
-		- Calculating uncertainties using different techniques (standard deviation, entropy, coefficient of variation, etc.)
-		- Converting uncertainties to consistency scores
-		- Calculating weights for proposed techniques and benchmark methods
-		- Measuring accuracy metrics for different aggregation techniques
-		- Simulating worker strengths and noisy labels
-		- Generating confidence scores for aggregated labels
+	This class implements methods for:
+	- Calculating uncertainties using different techniques (standard deviation, entropy, coefficient of variation, etc.)
+	- Converting uncertainties to consistency scores
+	- Calculating weights for proposed techniques and benchmark methods
+	- Measuring accuracy metrics for different aggregation techniques
+	- Simulating worker strengths and noisy labels
+	- Generating confidence scores for aggregated labels
 
-		Attributes:
-			data (dict): Dictionary containing training and test data
-			feature_columns (list): List of feature column names
-			config (Settings): Configuration object containing simulation parameters
-			n_workers (int): Number of workers in the simulation
-			seed (int): Random seed for reproducibility
+	Attributes:
+		data (dict): Dictionary containing training and test data
+		feature_columns (list): List of feature column names
+		config (Settings): Configuration object containing simulation parameters
+		n_workers (int): Number of workers in the simulation
+		seed (int): Random seed for reproducibility
 
-		Key Methods:
-			aim1_3_meauring_probs_uncertainties(): Simulates worker responses and calculates uncertainty metrics
-			calculate_uncertainties(): Computes various uncertainty metrics for predictions
-			calculate_consistency(): Converts uncertainties to consistency scores
-			aim1_3_measuring_proposed_weights(): Calculates weights for the proposed techniques
-			get_weights(): Returns weights for proposed and benchmark techniques
-			measuring_nu_and_confidence_score(): Calculates confidence scores and aggregated labels
-			core_measurements(): Main method that orchestrates the calculation pipeline
-			calculate_one_dataset(): Entry point for running simulations on a single dataset
-			calculate_all_datasets(): Entry point for running simulations on multiple datasets
+	Key Methods:
+		measuring_nu_and_confidence_score(): Calculates confidence scores and aggregated labels
+		core_measurements(): Main method that orchestrates the calculation pipeline
+		calculate_one_dataset(): Entry point for running simulations on a single dataset
+		calculate_all_datasets(): Entry point for running simulations on multiple datasets
 	"""
 	data               : dict
 	feature_columns    : list
@@ -689,41 +191,8 @@ class CrowdCertainOrchestrator:
 
 		return accuracy
 
-
 	@staticmethod
 	def get_AUC_ACC_F1(aggregated_labels: pd.Series, truth: pd.Series) -> pd.Series:
-		"""
-		Calculate AUC, accuracy, and F1 score metrics between aggregated labels and ground truth.
-
-		This function computes evaluation metrics for binary classification problems by comparing
-		aggregated labels (predictions) with the ground truth labels. It handles missing values
-		in the truth series by filtering them out before calculation.
-
-		Parameters:
-		-----------
-		aggregated_labels : pd.Series
-			The aggregated (predicted) probability labels, typically between 0 and 1.
-
-		truth : pd.Series
-			The ground truth labels with the same index as aggregated_labels.
-			Can contain null values which will be filtered out.
-
-		Returns:
-		--------
-		pd.Series
-			A pandas Series containing the following metrics:
-			- AUC (Area Under the ROC Curve)
-			- Accuracy
-			- F1 score
-
-			The Series is indexed by values from the params.EvaluationMetricNames enum.
-			If truth has no valid values or is not binary, the metrics will be NaN.
-
-		Notes:
-		------
-		- The aggregated labels are thresholded at 0.5 to convert to binary predictions
-		- Metrics are only calculated if there are non-null values in truth and truth contains exactly 2 unique values
-		"""
 
 		metrics = pd.Series(index=params.EvaluationMetricNames.values())
 
@@ -740,346 +209,7 @@ class CrowdCertainOrchestrator:
 		return metrics
 
 
-
-	def aim1_3_measuring_proposed_weights(self, preds, uncertainties) -> pd.DataFrame:
-		"""Calculates proposed weights for worker predictions based on consistency and uncertainty metrics.
-
-		This method computes two sets of weights based on different techniques:
-		1. The first technique uses raw consistency scores (T1)
-		2. The second technique zeros out consistency scores for incorrect predictions (T2)
-
-		The weights are then normalized by the mean weight across all workers.
-
-			preds (pd.DataFrame): 	Worker predictions with data indices as rows and workers as columns
-									Shape: (n_samples, n_workers)
-			uncertainties (pd.DataFrame): 	Uncertainty metrics for each worker and technique
-										 	Shape: (n_samples, n_workers * n_uncertainty_techniques) with MultiIndex columns [worker, uncertainty_technique]
-
-			pd.DataFrame: Calculated weights for each worker across different consistency techniques,
-							uncertainty techniques, and proposed weighting methods.
-							The DataFrame has a MultiIndex with levels:
-							[ConsistencyTechnique, UncertaintyTechnique, ProposedTechniqueName]
-							and columns representing workers.
-
-
-		Args:
-			preds 		  (pd.DataFrame): pd.DataFrame( index   = data_indices,
-														columns = [worker_0, worker_1, ...])
-			uncertainties (pd.DataFrame): pd.DataFrame( index   = data_indices,
-														columns = pd.MultiIndex.from_product([worker_0, ...], params.UncertaintyTechniques.values()))
-
-		Returns:
-			weights = pd.DataFrame( index = pd.MultiIndex.from_product([params.ConsistencyTechniques.values(),
-																		params.UncertaintyTechniques.values(),
-																		params.ProposedTechniqueNames.values()]),
-									columns = ['worker_0', .... ])
-		"""
-
-		# TODO This is the part where I should measure the prob_mv_binary for different # of workers instead of all of them
-		prob_mv_binary = preds.mean(axis=1) > 0.5
-
-		T1    = self.calculate_consistency( uncertainties )
-		T2    = T1.copy()
-
-		proposed_techniques = [tech.value for tech in params.ProposedTechniqueNames]
-		w_hat = pd.DataFrame(index=proposed_techniques, columns=T1.columns, dtype=float)
-		# w_hat2 = pd.Series(index=T1.columns)
-
-		for worker in preds.columns:
-
-			T2.loc[preds[worker].values != prob_mv_binary.values, worker] = 0
-
-			w_hat[worker] = pd.DataFrame.from_dict({proposed_techniques[0]: T1[worker].mean(axis=0),
-													proposed_techniques[1]: T2[worker].mean(axis=0)}, orient='index')
-
-			# w_hat.loc[proposed_techniques[0],worker] = T1[worker].mean(axis=0)
-			# w_hat[worker].iloc[proposed_techniques[1]] = T2[worker].mean(axis=0)
-
-		# w_hat = pd.DataFrame([w_hat1, w_hat2], index=list(params.ProposedTechniqueNames)).T
-
-		# measuring average weight over all workers. used to normalize the weights.
-		w_hat_mean_over_workers = w_hat.T.groupby(level=[1,2]).sum().T
-
-		# The below for loop can also be written as the following. this would be very slightly faster but much more complicated logit
-		# weights = w_hat.T.groupby(level=0, group_keys=False).apply(lambda row: row.divide(w_hat_mean_over_workers.T)).swaplevel(1,2).swaplevel(0,1).sort_index().T
-		weights = pd.DataFrame().reindex_like(w_hat)
-		for worker in preds.columns:
-			weights[worker] = w_hat[worker].divide(w_hat_mean_over_workers)
-
-
-		# probs_weighted = pd.DataFrame(columns=proposed_techniques, index=preds.index)
-		# for method in proposed_techniques:
-		# 	# probs_weighted[method] =( predicted_uncertainty * weights[method] ).sum(axis=1)
-		# 	probs_weighted[method] = (preds * weights[method]).sum( axis=1 )
-
-		# This will return a series
-		weights = weights.unstack().unstack(level='worker')
-		return weights
-
-
 	@staticmethod
-	def measuring_Tao_weights_based_on_classifier_labels(delta, noisy_true_labels):
-		"""
-		Calculates normalized Tao weights based on classifier labels.
-
-		This function computes weights for worker responses in a crowdsourcing scenario
-		using the agreement between worker responses and the classifier's estimated true labels.
-
-		Parameters
-		----------
-		delta : pandas.DataFrame
-			Worker responses with shape (num_samples, n_workers), where each cell contains
-			a binary response (True/False) or (1/0) from a worker for a specific sample.
-
-		noisy_true_labels : pandas.DataFrame or Series
-			The estimated true labels from a classifier with shape (num_samples, 1).
-
-		Returns
-		-------
-		pandas.DataFrame
-			Normalized Tao weights with shape (num_samples, n_workers), where each value
-			represents the weight assigned to a worker's response for a specific sample.
-			Higher weights indicate higher estimated reliability for that worker-sample pair.
-
-		Notes
-		-----
-		The algorithm calculates:
-		- tau      : Average agreement between worker responses and estimated true labels
-		- gamma    : Worker-specific quality metrics that account for agreement with other workers
-		- W_hat_Tao: Raw Tao weights before normalization
-		- z        : Normalizing factors
-		- Final weights are W_hat_Tao normalized by z for each sample
-
-			tau          : 1 thresh_technique 1
-			weights_Tao  : num_samples thresh_technique n_workers
-			W_hat_Tao    : num_samples thresh_technique n_workers
-			z            : num_samples thresh_technique 1
-			gamma        : num_samples thresh_technique 1
-		"""
-
-		tau = (delta == noisy_true_labels).mean(axis=0)
-
-		# number of workers
-		M = len(delta.columns)
-
-		# number of true and false labels for each class and sample
-		true_counts = delta.sum(axis=1)
-		false_counts = M - true_counts
-
-		# measuring the "specific quality of instanses"
-		s = delta.multiply(true_counts - 1, axis=0) + (~delta).multiply(false_counts - 1, axis=0)
-		gamma = (1 + s ** 2) * tau
-		W_hat_Tao = gamma.apply(lambda x: 1 / (1 + np.exp(-x)))
-		z = W_hat_Tao.mean(axis=1)
-
-		return W_hat_Tao.divide(z, axis=0)
-
-
-	@staticmethod
-	def measuring_Tao_weights_based_on_actual_labels(workers_labels, noisy_true_labels, n_workers):
-		"""
-		Calculate worker weights based on their accuracy relative to actual labels.
-
-		This function evaluates how well each worker's labels align with the noisy true labels
-		and computes weights that give more importance to workers who are more accurate.
-		The weights are normalized so that they sum to 1 for each sample.
-
-		Parameters:
-		-----------
-		workers_labels : pandas.DataFrame
-			DataFrame where each row represents a sample and each column represents a worker's labels.
-			Values should be boolean or binary (0/1).
-
-		noisy_true_labels : pandas.DataFrame
-			DataFrame containing the noisy ground truth labels for each sample.
-			Should have the same row indices as workers_labels.
-
-		n_workers : int
-			Number of workers.
-
-		Returns:
-		--------
-		pandas.DataFrame
-			Normalized weights for each worker for each sample.
-			Shape: (num_samples, n_workers)
-
-		Notes:
-		------
-		The function computes:
-		- tau: Worker accuracy (mean agreement with true labels)
-		- gamma: Weighted worker quality considering sample difficulty
-		- W_hat_Tao: Logistic activation of gamma
-		- Final weights: Normalized W_hat_Tao divided by n_workers
-			tau          : 1 thresh_technique 1
-			weights_Tao  : num_samples thresh_technique n_workers
-			W_hat_Tao    : num_samples thresh_technique n_workers
-			z            : num_samples thresh_technique 1
-			gamma        : num_samples thresh_technique 1
-		"""
-
-		tau = (workers_labels == noisy_true_labels).mean(axis=0)
-
-		# number of workers
-		M = len(noisy_true_labels.columns)
-
-		# number of true and false labels for each class and sample
-		true_counts = noisy_true_labels.sum(axis=1)
-		false_counts = M - true_counts
-
-		# measuring the "specific quality of instanses"
-		s = noisy_true_labels.multiply(true_counts - 1, axis=0) + (~noisy_true_labels).multiply(false_counts - 1, axis=0)
-		gamma = (1 + s ** 2) * tau
-		W_hat_Tao = gamma.apply(lambda x: 1 / (1 + np.exp(-x)))
-		z = W_hat_Tao.mean(axis=1)
-
-		return W_hat_Tao.divide(z, axis=0) / n_workers
-
-
-	@staticmethod
-	def calculate_confidence_scores(delta, w: Union[pd.DataFrame, pd.Series], n_workers) -> pd.DataFrame:
-		"""
-		Calculate confidence scores for each item using multiple strategies.
-
-		This function computes confidence scores for binary classifications based on worker responses
-		and their weights. It implements two strategies: frequency-based and beta distribution-based.
-
-		Parameters
-		----------
-		delta : pd.DataFrame
-			Binary matrix of worker responses where each row represents an item and each column
-			represents a worker's classification (True/False)
-		w : Union[pd.DataFrame, pd.Series]
-			Worker weights used to compute weighted sum of responses.
-			Shape should match the columns of delta.
-		n_workers : int
-			Number of workers who provided classifications
-
-		Returns
-		-------
-		pd.DataFrame
-			A DataFrame with multi-level columns containing confidence scores:
-			- First level: Strategy names (FREQ, BETA)
-			- Second level: 'F' (overall confidence score) and 'F_pos' (confidence in positive class)
-
-		Notes
-		-----
-		The frequency strategy simply calculates the weighted sum of positive and negative responses.
-		The beta strategy models the confidence using a beta distribution and calculates the probability
-		mass using the bdtrc function.
-		"""
-
-		P_pos = ( delta * w).sum( axis=1 )
-		P_neg = (~delta * w).sum( axis=1 )
-
-		def get_freq():
-			"""
-			Calculates frequency metrics based on positive and negative probability values.
-
-			This function creates a DataFrame with positive and negative probabilities,
-			then returns a new DataFrame containing:
-			- 'F': The maximum probability value between P_pos and P_neg for each entry
-			- 'F_pos': The positive probability values
-
-			Returns:
-				pandas.DataFrame: A DataFrame with 'F' and 'F_pos' columns, where:
-					- 'F' contains the maximum probability value for each entry
-					- 'F_pos' contains the positive probability values
-			"""
-			out = pd.DataFrame({'P_pos':P_pos,'P_neg':P_neg})
-			# F[out['P_pos'] < out['P_neg']] = out['P_neg'][out['P_pos'] < out['P_neg']]
-			return pd.DataFrame({'F': out.max(axis=1), 'F_pos': P_pos})
-
-		def get_beta():
-			"""
-			Calculate beta values based on positive and negative probabilities.
-
-			This function computes various beta-related statistics from the positive and negative
-			probability values (P_pos and P_neg). It calculates parameters for a beta distribution
-			including alpha (l_alpha) and beta (u_beta), then computes the incomplete beta function
-			values (I) using the bdtrc function.
-
-			Returns:
-				pandas.DataFrame: A DataFrame containing two columns:
-					- F: Maximum value between I and (1-I) for each row
-					- F_pos: The original I values
-
-			Note:
-				This function assumes that P_pos, P_neg, n_workers, and bdtrc are defined
-				in the outer scope.
-			"""
-			out = pd.DataFrame({'P_pos':P_pos,'P_neg':P_neg})
-
-			out['l_alpha'] = 1 + out['P_pos'] * n_workers
-			out['u_beta']  = 1 + out['P_neg'] * n_workers
-
-			out['k'] = out['l_alpha'] - 1
-
-			# This seems to be equivalent to n_workers + 1
-			out['n'] = ((out['l_alpha'] + out['u_beta']) - 1) #.astype(int)
-			# k = l_alpha.floordiv(1)
-			# n = (l_alpha+u_beta).floordiv(1) - 1
-
-			def get_I(row):
-				return bdtrc(row['k'], row['n'], 0.5)
-
-			out['I'] = out.apply(get_I, axis=1)
-
-			# out['I'] = np.nan
-			# for index in out['n'].index:
-			# 	out['I'][index] = bdtrc(out['k'][index], out['n'][index], 0.5)
-
-			def get_F_lambda(row):
-				return max(row['I'], 1-row['I'])
-
-			# F = I.copy()
-			# F[I < 0.5] = (1 - F)[I < 0.5]
-			return pd.DataFrame({'F': out.apply(get_F_lambda, axis=1), 'F_pos': out['I']})
-
-		columns = pd.MultiIndex.from_product([params.StrategyNames.values(), ['F', 'F_pos']], names=['strategies', 'F_F_pos'])
-		confidence_scores = pd.DataFrame(columns=columns, index=delta.index)
-		confidence_scores[params.StrategyNames.FREQ.value] = get_freq()
-		confidence_scores[params.StrategyNames.BETA.value] = get_beta()
-
-		return confidence_scores
-
-
-	def get_weights(self, workers_labels, preds, uncertainties, noisy_true_labels, n_workers) -> params.WeightType:
-		"""
-		Calculate weights for different methods (proposed, TAO, and SHENG).
-
-		Parameters
-		----------
-		workers_labels : pandas.DataFrame
-			Matrix of labels assigned by workers to items.
-		preds : pandas.Series or numpy.ndarray
-			Predictions (estimated true labels).
-		uncertainties : pandas.Series or numpy.ndarray
-			Uncertainty values associated with predictions.
-		noisy_true_labels : pandas.Series or numpy.ndarray
-			Ground truth labels (possibly with noise).
-		n_workers : int
-			Number of workers who provided labels.
-
-		Returns
-		-------
-		params.WeightType
-			Named tuple containing weights for three methods:
-			- PROPOSED: Weights calculated using the proposed technique based on predictions and uncertainties
-			- TAO: Weights calculated based on Tao's method using actual labels
-			- SHENG: Equal weights (1/n_workers) for all worker-item pairs
-		"""
-
-		# Measuring weights for the proposed technique
-		weights_proposed = self.aim1_3_measuring_proposed_weights( preds=preds, uncertainties=uncertainties)
-
-		# Benchmark accuracy measurement
-		weights_Tao = self.measuring_Tao_weights_based_on_actual_labels( workers_labels=workers_labels, noisy_true_labels=noisy_true_labels, n_workers=n_workers)
-
-		weights_Sheng = pd.DataFrame(1 / n_workers, index=weights_Tao.index, columns=weights_Tao.columns)
-
-		return params.WeightType(PROPOSED=weights_proposed, TAO=weights_Tao, SHENG=weights_Sheng)
-
-
 	def measuring_nu_and_confidence_score(self, weights: params.WeightType, preds_all, true_labels, use_parallelization_benchmarks: bool=False) -> Tuple[params.ResultType, params.ResultType]:
 		"""Calculates the confidence scores (nu) and evaluation metrics for proposed methods and benchmarks.
 
@@ -1109,6 +239,7 @@ class CrowdCertainOrchestrator:
 
 			agg_labels = pd.DataFrame(columns=weights.PROPOSED.index, index=preds.index)
 
+			index = pd.MultiIndex.from_product([ ['F', 'F_pos'], params.StrategyNames.values(), preds.index ], names=['F_F_pos', 'strategies', 'indices'])
 			confidence_scores = {}
 
 			metrics = pd.DataFrame(columns=weights.PROPOSED.index, index=params.EvaluationMetricNames.values())
@@ -1116,7 +247,7 @@ class CrowdCertainOrchestrator:
 			for cln in weights.PROPOSED.index:
 				agg_labels[cln] = (preds * weights.PROPOSED.T[cln]).sum(axis=1)
 
-				confidence_scores[cln] = CrowdCertainOrchestrator.calculate_confidence_scores(delta=preds, w=weights.PROPOSED.T[cln], n_workers=self.n_workers )
+				confidence_scores[cln] = CalculateConfidenceScores(delta=preds, w=weights.PROPOSED.T[cln], n_workers=self.n_workers ).calculate_confidence_scores()
 
 				# Measuring the metrics
 				metrics[cln] = CrowdCertainOrchestrator.get_AUC_ACC_F1(aggregated_labels=agg_labels[cln], truth=true_labels['test'].truth)
@@ -1153,7 +284,7 @@ class CrowdCertainOrchestrator:
 
 					agg_labels[m.value] = (workers_labels * w).sum(axis=1)
 
-					confidence_scores[m.value] = CrowdCertainOrchestrator.calculate_confidence_scores( delta=workers_labels, w=w, n_workers=self.n_workers )
+					confidence_scores[m.value] = CalculateConfidenceScores( delta=workers_labels, w=w, n_workers=self.n_workers ).calculate_confidence_scores()
 
 				return agg_labels, confidence_scores
 
@@ -1187,24 +318,18 @@ class CrowdCertainOrchestrator:
 			Note: A separate boolean flag is used for use_parallelization_benchmarks.
 			This will ensure we only apply parallelization when called through worker_weight_strength_relation function """
 
-		# def merge_worker_strengths_and_weights() -> pd.DataFrame:
-		# 	nonlocal workers_strength
-
-		# 	weights_Tao_mean  = weights.TAO.mean().to_frame(params.MainBenchmarks.TAO.value)
-
-		# 	return pd.concat( [workers_strength, weights.PROPOSED * n_workers, weights_Tao_mean], axis=1)
-
 		aim1_3 = cls(data=data, config=config, feature_columns=feature_columns, n_workers=n_workers, seed=seed)
 
 		# calculating uncertainty and predicted probability values
 		preds_all, uncertainties_all, true_labels, workers_strength = aim1_3.aim1_3_meauring_probs_uncertainties()
 
 		# Calculating weights for proposed techniques and TAO & Sheng benchmarks
-		weights = aim1_3.get_weights(   workers_labels    = preds_all['test']['simulation_0'],
-										preds 			  = preds_all['test']['mv'],
-										uncertainties 	  = uncertainties_all['test'],
-										noisy_true_labels = true_labels['test'].drop(columns=['truth']),
-										n_workers		  = n_workers)
+		weights = CalculateWeights.get_weights( workers_labels    = preds_all['test']['simulation_0'],
+												preds 			  = preds_all['test']['mv'],
+												uncertainties 	  = uncertainties_all['test'],
+												noisy_true_labels = true_labels['test'].drop(columns=['truth']),
+												n_workers		  = n_workers,
+												config			  = config)
 
 		# Calculating results for proposed techniques and benchmarks
 		results_proposed, results_benchmarks = aim1_3.measuring_nu_and_confidence_score(weights     = weights,
@@ -1541,3 +666,739 @@ class CrowdCertainOrchestrator:
 
 		return results
 
+
+class CalculateConfidenceScores:
+	def __init__(self, delta: pd.DataFrame, w: Union[pd.DataFrame, pd.Series], n_workers: int):
+		self.delta = delta
+		self.w = w
+		self.n_workers = n_workers
+
+	def get_freq(self, P_pos: pd.Series, P_neg: pd.Series) -> pd.DataFrame:
+		"""
+		Calculates frequency metrics based on positive and negative probability values.
+
+		This function creates a DataFrame with positive and negative probabilities,
+		then returns a new DataFrame containing:
+		- 'F': The maximum probability value between P_pos and P_neg for each entry
+		- 'F_pos': The positive probability values
+
+		Returns:
+			pandas.DataFrame: A DataFrame with 'F' and 'F_pos' columns, where:
+				- 'F' contains the maximum probability value for each entry
+				- 'F_pos' contains the positive probability values
+		"""
+		out = pd.DataFrame({'P_pos':P_pos,'P_neg':P_neg})
+		return pd.DataFrame({'F': out.max(axis=1), 'F_pos': P_pos})
+
+	def get_beta(self, P_pos: pd.Series, P_neg: pd.Series, n_workers: int) -> pd.DataFrame:
+		"""
+		Calculate beta values based on positive and negative probabilities.
+
+		This function computes various beta-related statistics from the positive and negative
+		probability values (P_pos and P_neg). It calculates parameters for a beta distribution
+		including alpha (l_alpha) and beta (u_beta), then computes the incomplete beta function
+		values (I) using the bdtrc function.
+
+		Returns:
+			pandas.DataFrame: A DataFrame containing two columns:
+				- F: Maximum value between I and (1-I) for each row
+				- F_pos: The original I values
+
+		Note:
+			This function assumes that P_pos, P_neg, n_workers, and bdtrc are defined
+			in the outer scope.
+		"""
+		out = pd.DataFrame({'P_pos':P_pos,'P_neg':P_neg})
+
+		out['l_alpha'] = 1 + out['P_pos'] * n_workers
+		out['u_beta']  = 1 + out['P_neg'] * n_workers
+
+		out['k'] = out['l_alpha'] - 1
+
+		# This seems to be equivalent to n_workers + 1
+		out['n'] = ((out['l_alpha'] + out['u_beta']) - 1) #.astype(int)
+
+
+		def get_I(row):
+			return bdtrc(row['k'], row['n'], 0.5)
+		out['I'] = out.apply(get_I, axis=1)
+
+		def get_F_lambda(row):
+			return max(row['I'], 1-row['I'])
+
+		return pd.DataFrame({'F': out.apply(get_F_lambda, axis=1), 'F_pos': out['I']})
+
+	def calculate_confidence_scores(self) -> pd.DataFrame:
+		"""
+		Calculate confidence scores for each item using multiple strategies.
+
+		This function computes confidence scores for binary classifications based on worker responses
+		and their weights. It implements two strategies: frequency-based and beta distribution-based.
+
+		Parameters
+		----------
+		delta : pd.DataFrame
+			Binary matrix of worker responses where each row represents an item and each column
+			represents a worker's classification (True/False)
+		w : Union[pd.DataFrame, pd.Series]
+			Worker weights used to compute weighted sum of responses.
+			Shape should match the columns of delta.
+		n_workers : int
+			Number of workers who provided classifications
+
+		Returns
+		-------
+		pd.DataFrame
+			A DataFrame with multi-level columns containing confidence scores:
+			- First level: Strategy names (FREQ, BETA)
+			- Second level: 'F' (overall confidence score) and 'F_pos' (confidence in positive class)
+
+		Notes
+		-----
+		The frequency strategy simply calculates the weighted sum of positive and negative responses.
+		The beta strategy models the confidence using a beta distribution and calculates the probability
+		mass using the bdtrc function.
+		"""
+
+		P_pos: pd.Series = ( self.delta * self.w).sum( axis=1 )
+		P_neg: pd.Series = (~self.delta * self.w).sum( axis=1 )
+
+
+		columns = pd.MultiIndex.from_product([params.StrategyNames.values(), ['F', 'F_pos']], names=['strategies', 'F_F_pos'])
+		confidence_scores = pd.DataFrame(columns=columns, index=self.delta.index)
+		confidence_scores[params.StrategyNames.FREQ.value] = self.get_freq(P_pos=P_pos, P_neg=P_neg)
+		confidence_scores[params.StrategyNames.BETA.value] = self.get_beta(P_pos=P_pos, P_neg=P_neg, n_workers=self.n_workers)
+
+		return confidence_scores
+
+
+class CalculateWeights:
+	"""
+	Class for calculating weights for different methods (proposed, TAO, and SHENG).
+
+	Parameters
+	----------
+	config : Settings
+		Configuration object containing uncertainty settings.
+	n_workers : int
+		Number of workers.
+	"""
+	def __init__(self, delta: pd.DataFrame, noisy_true_labels: pd.DataFrame, n_workers: int, config: 'Settings'):
+		self.delta = delta
+		self.noisy_true_labels = noisy_true_labels
+		self.n_workers = n_workers
+		self.config = config
+		self.weights = None
+
+	@staticmethod
+	def measuring_Tao_weights_based_on_classifier_labels(delta: pd.DataFrame, noisy_true_labels: pd.DataFrame) -> pd.DataFrame:
+		"""
+		Calculates normalized Tao weights based on classifier labels.
+
+		This function computes weights for worker responses in a crowdsourcing scenario
+		using the agreement between worker responses and the classifier's estimated true labels.
+
+		Parameters
+		----------
+		delta : pandas.DataFrame
+			Worker responses with shape (num_samples, n_workers), where each cell contains
+			a binary response (True/False) or (1/0) from a worker for a specific sample.
+
+		noisy_true_labels : pandas.DataFrame or Series
+			The estimated true labels from a classifier with shape (num_samples, 1).
+
+		Returns
+		-------
+		pandas.DataFrame
+			Normalized Tao weights with shape (num_samples, n_workers), where each value
+			represents the weight assigned to a worker's response for a specific sample.
+			Higher weights indicate higher estimated reliability for that worker-sample pair.
+
+		Notes
+		-----
+		The algorithm calculates:
+		- tau      : Average agreement between worker responses and estimated true labels
+		- gamma    : Worker-specific quality metrics that account for agreement with other workers
+		- W_hat_Tao: Raw Tao weights before normalization
+		- z        : Normalizing factors
+		- Final weights are W_hat_Tao normalized by z for each sample
+
+			tau          : 1 thresh_technique 1
+			weights_Tao  : num_samples thresh_technique n_workers
+			W_hat_Tao    : num_samples thresh_technique n_workers
+			z            : num_samples thresh_technique 1
+			gamma        : num_samples thresh_technique 1
+		"""
+
+		tau = (delta == noisy_true_labels).mean(axis=0)
+
+		# number of workers
+		M = len(delta.columns)
+
+		# number of true and false labels for each class and sample
+		true_counts = delta.sum(axis=1)
+		false_counts = M - true_counts
+
+		# measuring the "specific quality of instanses"
+		s = delta.multiply(true_counts - 1, axis=0) + (~delta).multiply(false_counts - 1, axis=0)
+		gamma = (1 + s ** 2) * tau
+		W_hat_Tao = gamma.apply(lambda x: 1 / (1 + np.exp(-x)))
+		z = W_hat_Tao.mean(axis=1)
+
+		return W_hat_Tao.divide(z, axis=0)
+
+	@staticmethod
+	def measuring_Tao_weights_based_on_actual_labels(workers_labels: pd.DataFrame, noisy_true_labels: pd.DataFrame, n_workers: int) -> pd.DataFrame:
+		"""
+		Calculate worker weights based on their accuracy relative to actual labels.
+
+		This function evaluates how well each worker's labels align with the noisy true labels
+		and computes weights that give more importance to workers who are more accurate.
+		The weights are normalized so that they sum to 1 for each sample.
+
+		Parameters:
+		-----------
+		workers_labels : pandas.DataFrame
+			DataFrame where each row represents a sample and each column represents a worker's labels.
+			Values should be boolean or binary (0/1).
+
+		noisy_true_labels : pandas.DataFrame
+			DataFrame containing the noisy ground truth labels for each sample.
+			Should have the same row indices as workers_labels.
+
+		n_workers : int
+			Number of workers.
+
+		Returns:
+		--------
+		pandas.DataFrame
+			Normalized weights for each worker for each sample.
+			Shape: (num_samples, n_workers)
+
+		Notes:
+		------
+		The function computes:
+		- tau: Worker accuracy (mean agreement with true labels)
+		- gamma: Weighted worker quality considering sample difficulty
+		- W_hat_Tao: Logistic activation of gamma
+		- Final weights: Normalized W_hat_Tao divided by n_workers
+			tau          : 1 thresh_technique 1
+			weights_Tao  : num_samples thresh_technique n_workers
+			W_hat_Tao    : num_samples thresh_technique n_workers
+			z            : num_samples thresh_technique 1
+			gamma        : num_samples thresh_technique 1
+		"""
+
+		tau = (workers_labels == noisy_true_labels).mean(axis=0)
+
+		# number of workers
+		M = len(noisy_true_labels.columns)
+
+		# number of true and false labels for each class and sample
+		true_counts = noisy_true_labels.sum(axis=1)
+		false_counts = M - true_counts
+
+		# measuring the "specific quality of instanses"
+		s = noisy_true_labels.multiply(true_counts - 1, axis=0) + (~noisy_true_labels).multiply(false_counts - 1, axis=0)
+		gamma = (1 + s ** 2) * tau
+		W_hat_Tao = gamma.apply(lambda x: 1 / (1 + np.exp(-x)))
+		z = W_hat_Tao.mean(axis=1)
+
+		return W_hat_Tao.divide(z, axis=0) / n_workers
+
+	@staticmethod
+	def get_weights(config: Settings, workers_labels: pd.DataFrame, preds: pd.DataFrame, uncertainties: pd.DataFrame, noisy_true_labels: pd.DataFrame, n_workers: int) -> params.WeightType:
+		"""
+		Calculate weights for different methods (proposed, TAO, and SHENG).
+
+		Parameters
+		----------
+		workers_labels : pandas.DataFrame
+			Matrix of labels assigned by workers to items.
+		preds : pandas.Series or numpy.ndarray
+			Predictions (estimated true labels).
+		uncertainties : pandas.Series or numpy.ndarray
+			Uncertainty values associated with predictions.
+		noisy_true_labels : pandas.Series or numpy.ndarray
+			Ground truth labels (possibly with noise).
+		n_workers : int
+			Number of workers who provided labels.
+
+		Returns
+		-------
+		params.WeightType
+			Named tuple containing weights for three methods:
+			- PROPOSED: Weights calculated using the proposed technique based on predictions and uncertainties
+			- TAO: Weights calculated based on Tao's method using actual labels
+			- SHENG: Equal weights (1/n_workers) for all worker-item pairs
+		"""
+
+		# Measuring weights for the proposed technique
+		weights_proposed = CalculateWeights.measuring_proposed_weights( preds=preds, uncertainties=uncertainties)
+
+		# Benchmark accuracy measurement
+		weights_Tao = CalculateWeights.measuring_Tao_weights_based_on_actual_labels( workers_labels=workers_labels, noisy_true_labels=noisy_true_labels, n_workers=n_workers )
+
+		weights_Sheng = pd.DataFrame(1 / n_workers, index=weights_Tao.index, columns=weights_Tao.columns)
+
+		return params.WeightType(PROPOSED=weights_proposed, TAO=weights_Tao, SHENG=weights_Sheng)
+
+
+	@staticmethod
+	def measuring_proposed_weights(config: Settings, preds: pd.DataFrame, uncertainties: pd.DataFrame) -> pd.DataFrame:
+
+		# TODO This is the part where I should measure the prob_mv_binary for different # of workers instead of all of them
+		prob_mv_binary = preds.mean(axis=1) > 0.5
+
+		T1    = ReliabilityCalculator.calculate_consistency( uncertainty=uncertainties, config=config )
+		T2    = T1.copy()
+
+		proposed_techniques = [l.value for l in params.ProposedTechniqueNames]
+		w_hat = pd.DataFrame(index=proposed_techniques, columns=T1.columns, dtype=float)
+
+		for worker in preds.columns:
+
+			T2.loc[preds[worker].values != prob_mv_binary.values, worker] = 0
+
+			w_hat[worker] = pd.DataFrame.from_dict({proposed_techniques[0]: T1[worker].mean(axis=0),
+													proposed_techniques[1]: T2[worker].mean(axis=0)}, orient='index')
+
+
+		# measuring average weight over all workers. used to normalize the weights.
+		w_hat_mean_over_workers = w_hat.T.groupby(level=[1,2]).sum().T
+
+
+		weights = pd.DataFrame().reindex_like(w_hat)
+		for worker in preds.columns:
+			weights[worker] = w_hat[worker].divide(w_hat_mean_over_workers)
+
+
+		# This will return a series
+		weights = weights.unstack().unstack(level='worker')
+		return weights
+
+
+class ReliabilityCalculator:
+	"""
+	Class for calculating various uncertainty metrics.
+
+	This class provides methods to calculate different uncertainty metrics for a given DataFrame.
+	The metrics include standard deviation, entropy, coefficient of variation, prediction interval,
+	and confidence interval.
+
+	Parameters
+	----------
+	config : Settings
+		Configuration object containing uncertainty settings.
+	n_workers : int
+		Number of workers.
+	seed : int
+		Random seed for reproducibility.
+	"""
+	def __init__(self, config: 'Settings', n_workers: int, seed: int, data: pd.DataFrame, feature_columns: list[str]):
+		self.config = config
+		self.n_workers = n_workers
+		self.seed = seed
+
+	@staticmethod
+	def calculate_uncertainties(df: pd.DataFrame, config: 'Settings') -> pd.DataFrame:
+		"""
+		Calculate various uncertainty metrics for a DataFrame.
+
+		This method calculates different uncertainty metrics for each row in the provided DataFrame.
+		The metrics are specified in the configuration and can include standard deviation,
+		entropy, coefficient of variation, prediction interval, and confidence interval.
+
+		Parameters
+		----------
+		df : pd.DataFrame
+			DataFrame containing values for which uncertainty needs to be calculated.
+			Each row represents one item, and columns represent different predictions or values.
+			Values should be convertible to integers.
+
+		Returns
+		-------
+		pd.DataFrame
+			DataFrame containing calculated uncertainty values for each row in the input DataFrame.
+			Each column corresponds to one uncertainty technique specified in the configuration.
+			The columns are named according to the value attribute of the uncertainty technique enum.
+
+		Notes
+		-----
+		- The entropy measure is normalized to fall between 0 and 1.
+		- The coefficient of variation (CV) is transformed using hyperbolic tangent to bound it between 0 and 1.
+		- For confidence interval calculation, rows with zero standard deviation will have NaN values, which are then filled with zeros.
+		"""
+
+		epsilon = np.finfo(float).eps
+		df = df.astype(int)
+
+		df_uncertainties = pd.DataFrame(columns=[l.value for l in config.technique.uncertainty_techniques], index=df.index)
+
+		for tech in config.technique.uncertainty_techniques:
+
+			if tech is params.UncertaintyTechniques.STD:
+				df_uncertainties[tech.value] = df.std( axis=1 )
+
+			elif tech is params.UncertaintyTechniques.ENTROPY:
+				# Normalize each row to sum to 1
+				df_normalized = df.div(df.sum(axis=1) + epsilon, axis=0)
+				# Calculate entropy
+				entropy = - (df_normalized * np.log(df_normalized + epsilon)).sum(axis=1)
+				# entropy = df.apply(lambda x: scipy.stats.entropy(x), axis=1).fillna(0)
+
+				# normalizing entropy values to be between 0 and 1
+				df_uncertainties[tech.value] = entropy / np.log(df.shape[1])
+
+			elif tech is params.UncertaintyTechniques.CV:
+				# The coefficient of variation (CoV) is a measure of relative variability. It is defined as the ratio of the standard deviation. CoV doesn't have an upper bound, but it's always non-negative. Normalizing CoV to a range of [0, 1] isn't straightforward because it can theoretically take any non-negative value. A common approach is to use a transformation that asymptotically approaches 1 as CoV increases. However, the choice of transformation can be somewhat arbitrary and may depend on the context of your data. One simple approach is to use a bounded function like the hyperbolic tangent:
+
+				coefficient_of_variation = df.std(axis=1) / (df.mean(axis=1) + epsilon)
+				df_uncertainties[tech.value] = np.tanh(coefficient_of_variation)
+
+			elif tech is params.UncertaintyTechniques.PI:
+				df_uncertainties[tech.value] = df.apply(lambda row: np.percentile(row.astype(int), 75) - np.percentile(row.astype(int), 25), axis=1)
+
+			elif tech is params.UncertaintyTechniques.CI:
+				# Lower Bound: This is the first value in the tuple. It indicates the lower end of the range. If you have a 95% confidence interval, this means that you can be 95% confident that the true population mean is greater than or equal to this value.
+
+				# Upper Bound: This is the second value in the tuple. It represents the upper end of the range. Continuing with the 95% confidence interval example, you can be 95% confident that the true population mean is less than or equal to this value.
+
+				confidene_interval = df.apply(lambda row: scipy.stats.norm.interval(0.95, loc=np.mean(row), scale=scipy.stats.sem(row)) if np.std(row) > 0 else (np.nan, np.nan),axis=1).apply(pd.Series)
+
+				# Calculate the width of the confidence interval (uncertainty score)
+				weight = confidene_interval[1] - confidene_interval[0]
+
+				# Optional: Normalize by the mean or another relevant value,
+				# For example, normalize by the midpoint of the interval
+				# midpoint = (confidene_interval[1] + confidene_interval[0]) / 2
+
+				df_uncertainties[tech.value] = weight.fillna(0) # / midpoint
+
+		return df_uncertainties
+
+	@staticmethod
+	def calculate_consistency(uncertainty: Union[pd.DataFrame, pd.Series, np.ndarray], config: 'Settings') -> pd.DataFrame:
+
+		def initialize_consistency():
+			nonlocal consistency
+			upper_level = [l.value for l in config.technique.consistency_techniques]
+
+			if isinstance(uncertainty, pd.DataFrame):
+				# The use of OrderedDict helps preserving the order of columns.
+				levels = [list(OrderedDict.fromkeys(uncertainty.columns.get_level_values(i))) for i in range(uncertainty.columns.nlevels)]
+
+				new_columns 	 = [upper_level] + levels
+				new_columnsnames = ['consistency_technique'] + uncertainty.columns.names
+
+				columns = pd.MultiIndex.from_product(new_columns, names=new_columnsnames)
+				consistency = pd.DataFrame(columns=columns, index=uncertainty.index)
+
+			elif isinstance(uncertainty, pd.Series):
+				consistency = pd.DataFrame(columns=upper_level, index=uncertainty.index)
+
+			elif isinstance(uncertainty, np.ndarray):
+				consistency = pd.DataFrame(columns=upper_level, index=range(uncertainty.shape[0]))
+
+			return consistency
+
+		consistency = initialize_consistency()
+
+		for tech in config.technique.consistency_techniques:
+			if tech is params.ConsistencyTechniques.ONE_MINUS_UNCERTAINTY:
+				consistency[tech.value] = 1 - uncertainty
+
+			elif tech is params.ConsistencyTechniques.ONE_DIVIDED_BY_UNCERTAINTY:
+				consistency[tech.value] = 1 / (uncertainty + np.finfo(float).eps)
+
+		# Making the worker the highest level in the columns
+		if isinstance(uncertainty, pd.DataFrame):
+			return consistency.swaplevel(0, 1, axis=1)
+
+		return consistency
+
+	@staticmethod
+	def assigning_strengths_randomly_to_each_worker(n_workers: int, config: 'Settings'):
+
+		workers_names = [f'worker_{j}' for j in range(n_workers)]
+
+		workers_strength_array = np.random.uniform(low=config.simulation.low_dis, high=config.simulation.high_dis, size=n_workers)
+
+		return pd.DataFrame({'workers_strength': workers_strength_array}, index=workers_names)
+
+
+	@staticmethod
+	def aim1_3_meauring_probs_uncertainties(config: 'Settings', n_workers: int, seed: int, data: pd.DataFrame, feature_columns: list[str]):
+
+		def looping_over_all_workers():
+
+			nonlocal workers_strength, preds, truth, uncertainties
+
+			def initialize_variables():
+				"""
+				Initialize data structures for storing prediction results, ground truth, and uncertainties.
+
+				Returns:
+					tuple: A tuple containing:
+						- predicted_labels_all_sims (dict): Dictionary with 'train' and 'test' keys, where each contains simulation results
+						- truth (dict): Dictionary with 'train' and 'test' keys, each containing a pandas DataFrame for ground truth values
+						- uncertainties (dict): Dictionary with 'train' and 'test' keys, each containing a pandas DataFrame with a MultiIndex
+							of worker IDs and uncertainty techniques
+
+				Note:
+					This function uses nonlocal variables that must be defined in the outer scope.
+					The uncertainties DataFrame will have columns based on the worker IDs and configured uncertainty techniques.
+				"""
+				nonlocal predicted_labels_all_sims, truth, uncertainties
+
+				predicted_labels_all_sims = {'train': {}, 'test': {}}
+
+				truth = { 'train': pd.DataFrame(), 'test': pd.DataFrame() }
+
+				columns = pd.MultiIndex.from_product([workers_strength.index, [l.value for l in config.technique.uncertainty_techniques]], names=['worker', 'uncertainty_technique'])
+
+				uncertainties = { 'train': pd.DataFrame(columns=columns), 'test': pd.DataFrame(columns=columns) }
+
+				return predicted_labels_all_sims, truth, uncertainties
+
+			def update_noisy_labels():
+				"""
+				Updates noisy labels for simulation by introducing controlled inaccuracies in true labels based
+				on worker strength.
+
+				The function manipulates the global variables predicted_labels_all_sims and truth, creating
+				noisy versions of the ground truth labels for both training and test datasets. The noise level
+				is determined by the worker's strength parameter, where lower strength values result in more
+				label errors.
+
+				Note:
+					This function uses nonlocal variables and modifies them directly.
+
+				Internal Functions:
+					getting_noisy_manual_labels_for_each_worker: Creates noisy versions of true labels
+					by flipping some labels based on the labeler's strength parameter.
+
+				Side Effects:
+					- Updates predicted_labels_all_sims with empty dictionaries for the current labeler
+					- Updates truth dictionary with both original and noisy versions of labels for train and test sets
+				"""
+				nonlocal predicted_labels_all_sims, truth
+
+				def getting_noisy_manual_labels_for_each_worker(truth_array: np.ndarray, l_strength: float):
+					"""
+					Generate noisy labels by flipping true labels with a probability determined by labeling strength.
+
+					This function simulates worker annotations by introducing noise to ground truth labels.
+					Each sample has a probability of (1 - l_strength) to have its true label flipped.
+
+					Parameters
+					----------
+					truth_array : np.ndarray
+						Array of ground truth probabilities/scores for each sample.
+						Shape: (num_samples,)
+
+					l_strength : float
+						Labeling strength parameter in range [0,1].
+						Higher values mean more accurate labels (less noise).
+						At l_strength=1, no labels are flipped.
+						At l_strength=0, all labels are flipped.
+
+					Returns
+					-------
+					np.ndarray
+						Binary array of noisy labels where some true labels are flipped based on l_strength.
+						Shape: (num_samples,)
+
+					Notes
+					-----
+					The function first converts truth_array to binary labels using a 0.5 threshold,
+					then randomly flips some labels based on the labeling strength parameter.
+					"""
+
+					# number of samples and workers/workers
+					num_samples = truth_array.shape[0]
+
+					# finding a random number for each instance
+					true_label_assignment_prob = np.random.random(num_samples)
+
+					# samples that will have an inaccurate true label
+					false_samples = true_label_assignment_prob < 1 - l_strength
+
+					# measuring the new labels for each worker/worker
+					worker_truth = truth_array > 0.5
+					worker_truth[false_samples] = ~ worker_truth[false_samples]
+
+					return worker_truth
+
+
+				# Initializationn
+				for mode in ['train', 'test']:
+					predicted_labels_all_sims[mode][LB] = {}
+					truth[mode]['truth'] = data[mode].true.copy()
+
+				# Extracting the simulated noisy manual labels based on the worker's strength
+				# TODO: check if the seed_num should be LB_index instead of 0 an 1
+				truth['train'][LB] = getting_noisy_manual_labels_for_each_worker( truth_array=data['train'].true.values, l_strength=workers_strength.T[LB].values )
+				truth['test'][LB]  = getting_noisy_manual_labels_for_each_worker( truth_array=data['test'].true.values, l_strength=workers_strength.T[LB].values )
+
+			def update_predicted_labels_all_sims(LB, sim_num):
+				"""
+				Predicts labels for both training and test data using trained classifiers.
+
+				This function trains a classifier based on the simulation method specified in the configuration
+				and uses it to predict labels for both training and test datasets. The predictions are stored
+				in the `predicted_labels_all_sims` dictionary.
+
+				Parameters:
+				----------
+				LB : str
+					The label column name to be predicted.
+				sim_num : int
+					The simulation number/index used to determine the classifier or its random state.
+
+				Notes:
+				-----
+				The function uses the nonlocal variable `predicted_labels_all_sims` to store prediction results.
+				Predictions are organized by mode ('train' or 'test'), label column (LB), and simulation number.
+
+				For params.SimulationMethods.RANDOM_STATES, it uses a RandomForestClassifier with varying random states.
+				For params.SimulationMethods.MULTIPLE_CLASSIFIERS, it selects different classifier types from a predefined list.
+				"""
+
+				nonlocal predicted_labels_all_sims
+
+				# training a random forest on the aformentioned labels
+				classifier = ClassifierTraining(config=config).get_classifier(sim_num=sim_num, random_state=seed)
+
+				classifier.fit( X=data['train'][feature_columns], y=truth['train'][LB] )
+
+				for mode in ['train', 'test']:
+					predicted_labels_all_sims[mode][LB] [ f'simulation_{sim_num}' ] = classifier.predict(data[mode][feature_columns])
+
+			def update_uncertainties(LB):
+				"""
+				Updates the uncertainties and predicted labels for a specific label for both training and test data.
+
+				This function processes the prediction results across all simulations for a given label (LB).
+				It converts the predictions to pandas DataFrame format, calculates uncertainties for each worker
+				across all simulations, and computes the majority vote prediction for each item.
+
+				Parameters
+				----------
+				LB : str
+					The label identifier for which uncertainties need to be updated.
+
+				Notes
+				-----
+				This function uses nonlocal variables:
+				- predicted_labels_all_sims: Dictionary containing prediction results for all simulations
+				- uncertainties: Dictionary to store calculated uncertainty values
+
+				The function processes both 'train' and 'test' modes separately.
+				"""
+				nonlocal predicted_labels_all_sims, uncertainties
+
+				# Measuring the prediction and uncertainties values after MV over all simulations
+				for mode in ['train', 'test']:
+					# converting to dataframe
+					predicted_labels_all_sims[mode][LB] = pd.DataFrame(predicted_labels_all_sims[mode][LB], index=data[mode].index)
+
+					# uncertainties for each worker over all simulations
+					uncertainties[mode][LB] = ReliabilityCalculator.calculate_uncertainties(df=predicted_labels_all_sims[mode][LB], config=	config)
+
+					# predicted probability of each class after MV over all simulations
+					predicted_labels_all_sims[mode][LB]['mv'] = ( predicted_labels_all_sims[mode][LB].mean(axis=1) > 0.5)
+
+			def swap_axes(predicted_labels_all_sims) -> dict[str, dict[str, pd.DataFrame]]:
+				"""
+				Swaps the axes of the predicted labels dataframe organization.
+
+				Transforms the structure from {mode: {worker: {simulation: predictions}}} to
+				{mode: {simulation: dataframe}}, where each dataframe has workers as columns.
+
+				Parameters
+				----------
+				predicted_labels_all_sims : dict
+					A nested dictionary structure containing predicted labels organized by
+					training/test mode, workers, and simulations.
+
+				Returns
+				-------
+				dict[str, dict[str, pd.DataFrame]]
+					Reorganized predictions where:
+					- First level keys are 'train' and 'test'
+					- Second level keys are simulation identifiers ('simulation_0', ..., 'mv')
+					- Values are pandas DataFrames with workers as columns and samples as rows
+				"""
+
+				# reshaping the dataframes
+				preds_swaped: dict[str, dict[str, pd.DataFrame]] = { 'train': defaultdict(pd.DataFrame), 'test': defaultdict(pd.DataFrame) }
+
+				for mode in ['train', 'test']:
+
+					# reversing the order of simulations and workers. NOTE: for the final experiment I should use simulation_0. if I use the mv, then because the augmented truths keeps changing in each simulation, then with enough simulations, I'll end up witht perfect workers.
+					for i in range(config.simulation.num_simulations + 1):
+
+						SM = f'simulation_{i}' if i < config.simulation.num_simulations else 'mv'
+
+						preds_swaped[mode][SM] = pd.DataFrame()
+						for LBx in [f'worker_{j}' for j in range( n_workers )]:
+							preds_swaped[mode][SM][LBx] = predicted_labels_all_sims[mode][LBx][SM]
+
+				return preds_swaped
+
+
+			predicted_labels_all_sims, truth, uncertainties = initialize_variables()
+
+			for LB_index, LB in enumerate(workers_strength.index):
+
+				update_noisy_labels()
+
+				for sim_num in range(classifier_training(config=config).n_simulations):
+					update_predicted_labels_all_sims(LB=LB, sim_num=sim_num)
+
+				update_uncertainties(LB)
+
+			preds = swap_axes(predicted_labels_all_sims)
+
+			return truth, uncertainties, preds
+
+		workers_strength = ReliabilityCalculator.assigning_strengths_randomly_to_each_worker(n_workers=n_workers, config=config)
+
+		truth, uncertainties, preds = looping_over_all_workers()
+
+		ReliabilityCalculator.adding_accuracy_for_each_worker(n_workers=n_workers, preds=preds, truth=truth, workers_strength=workers_strength)
+
+		return preds, uncertainties, truth, workers_strength
+
+
+	@staticmethod
+	def adding_accuracy_for_each_worker(n_workers: int, preds: pd.DataFrame, truth: pd.DataFrame, workers_strength: pd.DataFrame):
+		"""
+		Calculate and add accuracy measures for each worker in the crowd-sourcing task.
+
+		This function computes two types of accuracy metrics for each worker:
+		1. 'accuracy-test-classifier': The accuracy of the classifier's predictions against true labels
+			in the test dataset for simulation_0
+		2. 'accuracy-test': The accuracy of each worker's noisy labels against true labels in the
+			test dataset
+
+		The function updates the workers_strength DataFrame with these new accuracy metrics.
+
+		Note:
+			- This is a non-local function that modifies the outer scope variables: workers_strength, preds, and truth
+		"""
+
+		workers_strength['accuracy-test-classifier'] = 0.0
+		workers_strength['accuracy-test'] = 0.0
+
+		for i in range(n_workers):
+			LB = f'worker_{i}'
+
+			# accuracy of classifier in simulation_0
+			workers_strength.loc[LB, 'accuracy-test-classifier'] = ( preds['test']['simulation_0'][LB] == truth['test'].truth).mean()
+
+			# accuracy of noisy true labels for each worker
+			workers_strength.loc[LB, 'accuracy-test'] 		     = ( truth['test'][LB] == truth['test'].truth).mean()
+
+		return workers_strength
