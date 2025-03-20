@@ -5,9 +5,14 @@ This example demonstrates how to run a simulation on all available datasets.
 """
 
 from pathlib import Path
-from src.crowd_certain.utilities.utils import AIM1_3
-from crowd_certain.utilities.parameters.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques
-from crowd_certain.utilities.parameters.settings import Settings, OutputModes
+
+from crowd_certain.utilities.parameters.params import (
+    ConsistencyTechniques,
+    DatasetNames,
+    UncertaintyTechniques,
+)
+from crowd_certain.utilities.parameters.settings import OutputModes, Settings
+from src.crowd_certain.utilities.utils import CrowdCertainOrchestrator
 
 
 def run_all_datasets_example():
@@ -41,7 +46,7 @@ def run_all_datasets_example():
 
     # Run simulation
     try:
-        results = AIM1_3.calculate_all_datasets(config=config)
+        results = CrowdCertainOrchestrator.calculate_all_datasets(config=config)
         print("Simulation completed successfully for all datasets!")
 
         # Display summary of results for each dataset
@@ -102,7 +107,7 @@ def run_specific_datasets_example():
 
     # Run simulation
     try:
-        results = AIM1_3.calculate_all_datasets(config=config)
+        results = CrowdCertainOrchestrator.calculate_all_datasets(config=config)
         print("Simulation completed successfully for selected datasets!")
 
         # Display summary of results for each dataset

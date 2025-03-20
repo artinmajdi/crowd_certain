@@ -8,9 +8,9 @@ import argparse
 import sys
 from pathlib import Path
 
-from crowd_certain.utilities.utils import AIM1_3
 from crowd_certain.utilities.parameters import params
-from crowd_certain.utilities.parameters.settings import Settings, OutputModes
+from crowd_certain.utilities.parameters.settings import OutputModes, Settings
+from crowd_certain.utilities.utils import CrowdCertainOrchestrator
 
 
 def parse_args():
@@ -84,7 +84,7 @@ def run_single_dataset(args):
 
     # Run simulation
     try:
-        results = AIM1_3.calculate_one_dataset(config=config)
+        results = CrowdCertainOrchestrator.calculate_one_dataset(config=config)
         print(f"Simulation completed successfully for {args.dataset} dataset!")
 
         # Display some basic results
@@ -132,7 +132,7 @@ def run_all_datasets(args):
 
     # Run simulation
     try:
-        results = AIM1_3.calculate_all_datasets(config=config)
+        results = CrowdCertainOrchestrator.calculate_all_datasets(config=config)
         print("Simulation completed successfully for all datasets!")
 
         # Display summary of results
@@ -153,8 +153,9 @@ def run_all_datasets(args):
 def run_dashboard():
     """Run the Streamlit dashboard."""
     try:
-        import streamlit.web.cli as stcli
         import os
+
+        import streamlit.web.cli as stcli
 
         # Get the path to the dashboard.py file
         dashboard_path = Path(__file__).parent / "utilities" / "dashboard.py"

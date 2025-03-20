@@ -4,7 +4,11 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 from tqdm import tqdm
-from src.crowd_certain.utilities.utils import AIM1_3, Aim1_3_Data_Analysis_Results
+
+from src.crowd_certain.utilities.utils import (
+    Aim1_3_Data_Analysis_Results,
+    CrowdCertainOrchestrator,
+)
 
 """ Running Calculations  """
 
@@ -17,7 +21,7 @@ nlabelers_list = range(3,10)
 outputs = {}
 for NL in tqdm( nlabelers_list, desc='looping through different # labelers' ):
 
-    aim1_3 = AIM1_3(data=data, num_simulations=num_simulations, feature_columns=feature_columns, num_labelers=NL, low_dis=low_dis, high_dis=high_dis)
+    aim1_3 = CrowdCertainOrchestrator(data=data, num_simulations=num_simulations, feature_columns=feature_columns, num_labelers=NL, low_dis=low_dis, high_dis=high_dis)
 
     with multiprocessing.Pool(processes=num_seeds ) as pool:
         outputs[f'NL{NL}'] = pool.map( aim1_3.full_accuracy_comparison ,  list(range(num_seeds))  )

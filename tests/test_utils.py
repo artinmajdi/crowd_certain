@@ -4,14 +4,16 @@ Test script for utility functions in the utils module.
 
 import numpy as np
 import pytest
-from crowd_certain.utilities.utils import AIM1_3
+
+from crowd_certain.utilities.utils import CrowdCertainOrchestrator
+
 
 def test_aim1_3():
     """Test the AIM1_3 utility class/function."""
     # Since we don't know exactly what AIM1_3 does, we'll create a basic test
     # that verifies it can be instantiated and has expected methods
 
-    aim_instance = AIM1_3()
+    aim_instance = CrowdCertainOrchestrator()
 
     # If it's a class with methods, we can test their existence
     if hasattr(aim_instance, "initialize"):
@@ -30,9 +32,9 @@ def test_data_preprocessing():
     # that might exist in the utils module
 
     # Example: Testing a normalization function
-    if hasattr(AIM1_3, "normalize_data"):
+    if hasattr(CrowdCertainOrchestrator, "normalize_data"):
         data = np.array([[1.0, 2.0], [3.0, 4.0]])
-        normalized = AIM1_3.normalize_data(data)
+        normalized = CrowdCertainOrchestrator.normalize_data(data)
         # Check that values are between 0 and 1
         assert np.all(normalized >= 0) and np.all(normalized <= 1)
 
@@ -42,9 +44,9 @@ def test_calculation_functions():
     # that might exist in the utils module
 
     # Example: Testing a mean calculation function
-    if hasattr(AIM1_3, "calculate_mean"):
+    if hasattr(CrowdCertainOrchestrator, "calculate_mean"):
         data = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
-        mean = AIM1_3.calculate_mean(data)
+        mean = CrowdCertainOrchestrator.calculate_mean(data)
         assert mean == 3.0
 
 if __name__ == "__main__":

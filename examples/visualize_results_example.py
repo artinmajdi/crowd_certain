@@ -6,14 +6,22 @@ This example demonstrates how to visualize simulation results using matplotlib a
 
 import os
 import pickle
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 from pathlib import Path
-import pandas as pd
 
-from crowd_certain.utilities.utils import AIM1_3, Settings, DatasetNames
-from crowd_certain.utilities.parameters.params import UncertaintyTechniques, ConsistencyTechniques
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+
+from crowd_certain.utilities.parameters.params import (
+    ConsistencyTechniques,
+    UncertaintyTechniques,
+)
+from crowd_certain.utilities.utils import (
+    CrowdCertainOrchestrator,
+    DatasetNames,
+    Settings,
+)
 
 
 def run_simulation_for_visualization():
@@ -33,7 +41,7 @@ def run_simulation_for_visualization():
 
     # Run simulation
     try:
-        results = AIM1_3.calculate_one_dataset(config=config)
+        results = CrowdCertainOrchestrator.calculate_one_dataset(config=config)
         print("Simulation completed successfully!")
         return results
     except Exception as e:

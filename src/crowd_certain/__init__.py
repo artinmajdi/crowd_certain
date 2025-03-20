@@ -5,8 +5,8 @@ including simulation, uncertainty calculation, and evaluation metrics.
 """
 
 from crowd_certain.utilities import parameters
-from crowd_certain.utilities.utils import AIM1_3
 from crowd_certain.utilities.benchmarks import BenchmarkTechniques
+from crowd_certain.utilities.utils import CrowdCertainOrchestrator
 
 __version__ = "1.0.0"
 

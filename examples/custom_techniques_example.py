@@ -5,13 +5,18 @@ This example demonstrates how to use different combinations of uncertainty and c
 """
 
 from pathlib import Path
-import pandas as pd
+
 import matplotlib.pyplot as plt
+import pandas as pd
 import seaborn as sns
 
-from crowd_certain.utilities.utils import AIM1_3
-from crowd_certain.utilities.parameters.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques
-from crowd_certain.utilities.parameters.settings import Settings, OutputModes
+from crowd_certain.utilities.parameters.params import (
+    ConsistencyTechniques,
+    DatasetNames,
+    UncertaintyTechniques,
+)
+from crowd_certain.utilities.parameters.settings import OutputModes, Settings
+from crowd_certain.utilities.utils import CrowdCertainOrchestrator
 
 
 def run_with_all_techniques():
@@ -45,7 +50,7 @@ def run_with_all_techniques():
 
     # Run simulation
     try:
-        results = AIM1_3.calculate_one_dataset(config=config)
+        results = CrowdCertainOrchestrator.calculate_one_dataset(config=config)
         print("Simulation completed successfully!")
 
         # Access and display results
@@ -102,7 +107,7 @@ def compare_uncertainty_techniques():
 
         # Run simulation
         try:
-            results = AIM1_3.calculate_one_dataset(config=config)
+            results = CrowdCertainOrchestrator.calculate_one_dataset(config=config)
 
             # Store accuracy for this technique
             first_nl_key = list(results.outputs.keys())[0]
@@ -181,7 +186,7 @@ def compare_consistency_techniques():
 
         # Run simulation
         try:
-            results = AIM1_3.calculate_one_dataset(config=config)
+            results = CrowdCertainOrchestrator.calculate_one_dataset(config=config)
 
             # Store accuracy for this technique
             first_nl_key = list(results.outputs.keys())[0]

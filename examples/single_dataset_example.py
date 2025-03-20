@@ -5,9 +5,14 @@ This example demonstrates how to run a simulation on a single dataset with custo
 """
 
 from pathlib import Path
-from crowd_certain.utilities.utils import AIM1_3
-from crowd_certain.utilities.parameters.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques
-from crowd_certain.utilities.parameters.settings import Settings, OutputModes
+
+from crowd_certain.utilities.parameters.params import (
+    ConsistencyTechniques,
+    DatasetNames,
+    UncertaintyTechniques,
+)
+from crowd_certain.utilities.parameters.settings import OutputModes, Settings
+from crowd_certain.utilities.utils import CrowdCertainOrchestrator
 
 
 def run_single_dataset_example():
@@ -47,7 +52,7 @@ def run_single_dataset_example():
 
     # Run simulation
     try:
-        results = AIM1_3.calculate_one_dataset(config=config)
+        results = CrowdCertainOrchestrator.calculate_one_dataset(config=config)
         print("Simulation completed successfully!")
 
         # Access and display results

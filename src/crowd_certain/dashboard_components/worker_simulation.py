@@ -5,13 +5,16 @@ This module provides functionality for generating simulated workers with varying
 and creating noisy labels for crowdsourcing simulations.
 """
 
-import numpy as np
-import pandas as pd
 from typing import Dict, Tuple
 
+import numpy as np
+import pandas as pd
 from sklearn import ensemble as sk_ensemble
+
 from crowd_certain.utilities.parameters import params
-from crowd_certain.utilities.utils import AIM1_3, ClassifierTraining
+from crowd_certain.utilities.utils import ClassifierTraining, CrowdCertainOrchestrator
+
+
 class WorkerSimulator:
     """
     A class for simulating workers with varying skill levels and their label predictions.
@@ -208,7 +211,9 @@ class WorkerSimulator:
                 )
 
                 # Get uncertainties for this worker using the UncertaintyCalculator
-                from crowd_certain.utilities._components.uncertainty import UncertaintyCalculator
+                from crowd_certain.utilities._components.uncertainty import (
+                    UncertaintyCalculator,
+                )
                 calculator = UncertaintyCalculator(self.config)
                 uncertainties[mode][worker] = calculator.calculate_uncertainties(
                     df=predicted_labels_all_sims[mode][worker]

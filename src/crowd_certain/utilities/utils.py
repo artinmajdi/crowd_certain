@@ -103,98 +103,9 @@ class ClassifierTraining:
 		return self._classifiers_list
 
 
-@dataclass
-class AIM1_3:
-	"""
-	Main class for AIM1_3 implementation that handles the calculation of worker weights, uncertainties, and confidence scores
-	for crowdsourced label aggregation.
-
-	This class implements methods for:
-	- Calculating uncertainties using different techniques (standard deviation, entropy, coefficient of variation, etc.)
-	- Converting uncertainties to consistency scores
-	- Calculating weights for proposed techniques and benchmark methods
-	- Measuring accuracy metrics for different aggregation techniques
-	- Simulating worker strengths and noisy labels
-	- Generating confidence scores for aggregated labels
-
-	Attributes:
-		data (dict): Dictionary containing training and test data
-		feature_columns (list): List of feature column names
-		config (Settings): Configuration object containing simulation parameters
-		n_workers (int): Number of workers in the simulation
-		seed (int): Random seed for reproducibility
-
-	Key Methods:
-		aim1_3_meauring_probs_uncertainties(): Simulates worker responses and calculates uncertainty metrics
-		calculate_uncertainties(): Computes various uncertainty metrics for predictions
-		calculate_consistency(): Converts uncertainties to consistency scores
-		aim1_3_measuring_proposed_weights(): Calculates weights for the proposed techniques
-		get_weights(): Returns weights for proposed and benchmark techniques
-		measuring_nu_and_confidence_score(): Calculates confidence scores and aggregated labels
-		core_measurements(): Main method that orchestrates the calculation pipeline
-		calculate_one_dataset(): Entry point for running simulations on a single dataset
-		calculate_all_datasets(): Entry point for running simulations on multiple datasets
-	"""
-	data               : dict
-	feature_columns    : list
-	config             : 'Settings'
-	classifier_training: Optional[ClassifierTraining] = None
-	n_workers          : int = 3
-	seed               : int = 0
-
-	def __post_init__(self):
-		self.classifier_training = ClassifierTraining(config=self.config)
-		np.random.seed(self.seed + 1)
-
-
-	@staticmethod
-	def get_accuracy(aggregated_labels, n_workers, delta_benchmark, truth):
-		"""
-		Calculates the accuracy of various crowdsourcing aggregation methods by comparing
-		their predictions against ground truth.
-
-		Parameters
-		----------
-		aggregated_labels : pd.DataFrame
-			DataFrame containing the aggregated labels from different aggregation methods.
-			Each column represents a different method, and each row represents an item.
-
-		n_workers : int
-			The number of workers used in the crowdsourcing task.
-
-		delta_benchmark : pd.DataFrame
-			Binary predicted labels from workers. Used to calculate majority voting accuracy.
-			Rows are items and columns are workers.
-
-		truth : pd.Series or array-like
-			Ground truth labels for each item.
-
-		Returns
-		-------
-		pd.DataFrame
-			DataFrame with accuracy scores for each aggregation method.
-			The index is the number of workers and columns are the different methods.
-
-		Notes
-		-----
-		The function evaluates accuracy for three groups of methods:
-		- params.ProposedTechniqueNames: Custom proposed techniques
-		- params.MainBenchmarks: Main benchmark methods
-		- params.OtherBenchmarkNames: Additional benchmark methods
-		- MV_Classifier: Majority voting accuracy
-
-		Accuracy is calculated by thresholding aggregated labels at 0.5 and
-		comparing with ground truth.
-		"""
-
-		accuracy = pd.DataFrame(index=[n_workers])
-		for methods in [params.ProposedTechniqueNames, params.MainBenchmarks, params.OtherBenchmarkNames]:
-			for m in methods:
-				accuracy[m] = ((aggregated_labels[m] >= 0.5) == truth).mean(axis=0)
-
-		accuracy['MV_Classifier'] = ( (delta_benchmark.mean(axis=1) >= 0.5) == truth).mean(axis=0)
-
-		return accuracy
+class ReliabilityCalculator:
+	def __init__(self, config: 'Settings'):
+		self.config = config
 
 
 	def calculate_uncertainties(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -272,122 +183,6 @@ class AIM1_3:
 				df_uncertainties[tech.value] = weight.fillna(0) # / midpoint
 
 		return df_uncertainties
-
-
-	def calculate_consistency(self, uncertainty: Union[pd.DataFrame, pd.Series, np.ndarray]) -> pd.DataFrame:
-		"""
-		Calculates consistency metrics from uncertainty values.
-
-		This method computes consistency scores using different techniques based on the provided uncertainty data.
-		Consistency is the inverse of uncertainty - higher consistency implies lower uncertainty.
-
-		Parameters
-		----------
-		uncertainty : Union[pd.DataFrame, pd.Series, np.ndarray]
-			The uncertainty values to convert to consistency.
-			- If DataFrame: Assumes multi-level columns with uncertainty values
-			- If Series: A simple series of uncertainty values
-			- If ndarray: A numpy array containing uncertainty values
-
-		Returns
-		-------
-		pd.DataFrame
-			A DataFrame containing the calculated consistency values.
-			- If input was DataFrame: Returns multi-level columned DataFrame with consistency techniques as the second level (worker is the highest level)
-			- If input was Series/ndarray: Returns DataFrame with consistency techniques as columns
-
-		Notes
-		-----
-		Supported consistency calculation techniques:
-			- ONE_MINUS_UNCERTAINTY: 1 - uncertainty
-			- ONE_DIVIDED_BY_UNCERTAINTY: 1 / uncertainty (with epsilon to prevent division by zero)
-		"""
-
-		def initialize_consistency():
-			nonlocal consistency
-			upper_level = [tech.value for tech in self.config.technique.consistency_techniques]
-
-			if isinstance(uncertainty, pd.DataFrame):
-				# The use of OrderedDict helps preserving the order of columns.
-				levels = [list(OrderedDict.fromkeys(uncertainty.columns.get_level_values(i))) for i in range(uncertainty.columns.nlevels)]
-
-				new_columns 	 = [upper_level] + levels
-				new_columnsnames = ['consistency_technique'] + uncertainty.columns.names
-
-				columns = pd.MultiIndex.from_product(new_columns, names=new_columnsnames)
-				consistency = pd.DataFrame(columns=columns, index=uncertainty.index)
-
-			elif isinstance(uncertainty, pd.Series):
-				consistency = pd.DataFrame(columns=upper_level, index=uncertainty.index)
-
-			elif isinstance(uncertainty, np.ndarray):
-				consistency = pd.DataFrame(columns=upper_level, index=range(uncertainty.shape[0]))
-
-			return consistency
-
-		consistency = initialize_consistency()
-
-		for tech in self.config.technique.consistency_techniques:
-			if tech is params.ConsistencyTechniques.ONE_MINUS_UNCERTAINTY:
-				consistency[tech.value] = 1 - uncertainty
-
-			elif tech is params.ConsistencyTechniques.ONE_DIVIDED_BY_UNCERTAINTY:
-				consistency[tech.value] = 1 / (uncertainty + np.finfo(float).eps)
-
-		# Making the worker the highest level in the columns
-		if isinstance(uncertainty, pd.DataFrame):
-			return consistency.swaplevel(0, 1, axis=1)
-
-		return consistency
-
-	@staticmethod
-	def get_AUC_ACC_F1(aggregated_labels: pd.Series, truth: pd.Series) -> pd.Series:
-		"""
-		Calculate AUC, accuracy, and F1 score metrics between aggregated labels and ground truth.
-
-		This function computes evaluation metrics for binary classification problems by comparing
-		aggregated labels (predictions) with the ground truth labels. It handles missing values
-		in the truth series by filtering them out before calculation.
-
-		Parameters:
-		-----------
-		aggregated_labels : pd.Series
-			The aggregated (predicted) probability labels, typically between 0 and 1.
-
-		truth : pd.Series
-			The ground truth labels with the same index as aggregated_labels.
-			Can contain null values which will be filtered out.
-
-		Returns:
-		--------
-		pd.Series
-			A pandas Series containing the following metrics:
-			- AUC (Area Under the ROC Curve)
-			- Accuracy
-			- F1 score
-
-			The Series is indexed by values from the params.EvaluationMetricNames enum.
-			If truth has no valid values or is not binary, the metrics will be NaN.
-
-		Notes:
-		------
-		- The aggregated labels are thresholded at 0.5 to convert to binary predictions
-		- Metrics are only calculated if there are non-null values in truth and truth contains exactly 2 unique values
-		"""
-
-		metrics = pd.Series(index=params.EvaluationMetricNames.values())
-
-		non_null = ~truth.isnull()
-		truth_notnull = truth[non_null].to_numpy()
-
-		if (len(truth_notnull) > 0) and (np.unique(truth_notnull).size == 2):
-
-			yhat = (aggregated_labels > 0.5).astype(int)[non_null]
-			metrics[params.EvaluationMetricNames.AUC.value] = sk_metrics.roc_auc_score( truth_notnull, yhat)
-			metrics[params.EvaluationMetricNames.ACC.value] = sk_metrics.accuracy_score(truth_notnull, yhat)
-			metrics[params.EvaluationMetricNames.F1.value ] = sk_metrics.f1_score( 	 truth_notnull, yhat)
-
-		return metrics
 
 
 	def aim1_3_meauring_probs_uncertainties(self):
@@ -727,6 +522,223 @@ class AIM1_3:
 		adding_accuracy_for_each_worker()
 
 		return preds, uncertainties, truth, workers_strength
+
+
+	def calculate_consistency(self, uncertainty: Union[pd.DataFrame, pd.Series, np.ndarray]) -> pd.DataFrame:
+		"""
+		Calculates consistency metrics from uncertainty values.
+
+		This method computes consistency scores using different techniques based on the provided uncertainty data.
+		Consistency is the inverse of uncertainty - higher consistency implies lower uncertainty.
+
+		Parameters
+		----------
+		uncertainty : Union[pd.DataFrame, pd.Series, np.ndarray]
+			The uncertainty values to convert to consistency.
+			- If DataFrame: Assumes multi-level columns with uncertainty values
+			- If Series: A simple series of uncertainty values
+			- If ndarray: A numpy array containing uncertainty values
+
+		Returns
+		-------
+		pd.DataFrame
+			A DataFrame containing the calculated consistency values.
+			- If input was DataFrame: Returns multi-level columned DataFrame with consistency techniques as the second level (worker is the highest level)
+			- If input was Series/ndarray: Returns DataFrame with consistency techniques as columns
+
+		Notes
+		-----
+		Supported consistency calculation techniques:
+			- ONE_MINUS_UNCERTAINTY: 1 - uncertainty
+			- ONE_DIVIDED_BY_UNCERTAINTY: 1 / uncertainty (with epsilon to prevent division by zero)
+		"""
+
+		epsilon = np.finfo(float).eps
+
+		# Use dictionary for technique implementations
+		technique_funcs = {
+			params.ConsistencyTechniques.ONE_MINUS_UNCERTAINTY: lambda u: 1 - u,
+			params.ConsistencyTechniques.ONE_DIVIDED_BY_UNCERTAINTY: lambda u: 1 / (u + epsilon)
+		}
+
+		# Extract consistency techniques to apply
+		consistency_techniques = [tech.value for tech in self.config.technique.consistency_techniques]
+
+		if isinstance(uncertainty, pd.DataFrame):
+			# Get unique values at each level while preserving order
+			levels = [list(OrderedDict.fromkeys(uncertainty.columns.get_level_values(i)))
+						for i in range(uncertainty.columns.nlevels)]
+
+			# Create new column structure with consistency_technique as first level
+			new_columns = [consistency_techniques] + levels
+			new_column_names = ['consistency_technique'] + uncertainty.columns.names
+
+			# Initialize result DataFrame
+			columns = pd.MultiIndex.from_product(new_columns, names=new_column_names)
+			consistency = pd.DataFrame(index=uncertainty.index, columns=columns)
+
+			# Apply each technique
+			for tech in self.config.technique.consistency_techniques:
+				consistency[tech.value] = technique_funcs[tech](uncertainty)
+
+			# Make worker the highest level in the columns
+			return consistency.swaplevel(0, 1, axis=1)
+		else:
+			# TODO: delete this multistructure and only preserve either pd.Series or pd.DataFrame (after figuring out how uncertianty calculation works)
+			# Handle Series and ndarray cases
+			index = uncertainty.index if isinstance(uncertainty, pd.Series) else range(len(uncertainty))
+			consistency = pd.DataFrame(index=index, columns=consistency_techniques)
+
+			# Apply each technique
+			for tech in self.config.technique.consistency_techniques:
+				consistency[tech.value] = technique_funcs[tech](uncertainty)
+
+			return consistency
+
+
+@dataclass
+class CrowdCertainOrchestrator:
+	"""
+		Main class for AIM1_3 implementation that handles the calculation of worker weights, uncertainties, and confidence scores
+		for crowdsourced label aggregation.
+
+		This class implements methods for:
+		- Calculating uncertainties using different techniques (standard deviation, entropy, coefficient of variation, etc.)
+		- Converting uncertainties to consistency scores
+		- Calculating weights for proposed techniques and benchmark methods
+		- Measuring accuracy metrics for different aggregation techniques
+		- Simulating worker strengths and noisy labels
+		- Generating confidence scores for aggregated labels
+
+		Attributes:
+			data (dict): Dictionary containing training and test data
+			feature_columns (list): List of feature column names
+			config (Settings): Configuration object containing simulation parameters
+			n_workers (int): Number of workers in the simulation
+			seed (int): Random seed for reproducibility
+
+		Key Methods:
+			aim1_3_meauring_probs_uncertainties(): Simulates worker responses and calculates uncertainty metrics
+			calculate_uncertainties(): Computes various uncertainty metrics for predictions
+			calculate_consistency(): Converts uncertainties to consistency scores
+			aim1_3_measuring_proposed_weights(): Calculates weights for the proposed techniques
+			get_weights(): Returns weights for proposed and benchmark techniques
+			measuring_nu_and_confidence_score(): Calculates confidence scores and aggregated labels
+			core_measurements(): Main method that orchestrates the calculation pipeline
+			calculate_one_dataset(): Entry point for running simulations on a single dataset
+			calculate_all_datasets(): Entry point for running simulations on multiple datasets
+	"""
+	data               : dict
+	feature_columns    : list
+	config             : 'Settings'
+	classifier_training: Optional[ClassifierTraining] = None
+	n_workers          : int = 3
+	seed               : int = 0
+
+	def __post_init__(self):
+		self.classifier_training = ClassifierTraining(config=self.config)
+		np.random.seed(self.seed + 1)
+
+
+	@staticmethod
+	def get_accuracy(aggregated_labels, n_workers, delta_benchmark, truth):
+		"""
+		Calculates the accuracy of various crowdsourcing aggregation methods by comparing
+		their predictions against ground truth.
+
+		Parameters
+		----------
+		aggregated_labels : pd.DataFrame
+			DataFrame containing the aggregated labels from different aggregation methods.
+			Each column represents a different method, and each row represents an item.
+
+		n_workers : int
+			The number of workers used in the crowdsourcing task.
+
+		delta_benchmark : pd.DataFrame
+			Binary predicted labels from workers. Used to calculate majority voting accuracy.
+			Rows are items and columns are workers.
+
+		truth : pd.Series or array-like
+			Ground truth labels for each item.
+
+		Returns
+		-------
+		pd.DataFrame
+			DataFrame with accuracy scores for each aggregation method.
+			The index is the number of workers and columns are the different methods.
+
+		Notes
+		-----
+		The function evaluates accuracy for three groups of methods:
+		- params.ProposedTechniqueNames: Custom proposed techniques
+		- params.MainBenchmarks: Main benchmark methods
+		- params.OtherBenchmarkNames: Additional benchmark methods
+		- MV_Classifier: Majority voting accuracy
+
+		Accuracy is calculated by thresholding aggregated labels at 0.5 and
+		comparing with ground truth.
+		"""
+
+		accuracy = pd.DataFrame(index=[n_workers])
+		for methods in [params.ProposedTechniqueNames, params.MainBenchmarks, params.OtherBenchmarkNames]:
+			for m in methods:
+				accuracy[m] = ((aggregated_labels[m] >= 0.5) == truth).mean(axis=0)
+
+		accuracy['MV_Classifier'] = ( (delta_benchmark.mean(axis=1) >= 0.5) == truth).mean(axis=0)
+
+		return accuracy
+
+
+	@staticmethod
+	def get_AUC_ACC_F1(aggregated_labels: pd.Series, truth: pd.Series) -> pd.Series:
+		"""
+		Calculate AUC, accuracy, and F1 score metrics between aggregated labels and ground truth.
+
+		This function computes evaluation metrics for binary classification problems by comparing
+		aggregated labels (predictions) with the ground truth labels. It handles missing values
+		in the truth series by filtering them out before calculation.
+
+		Parameters:
+		-----------
+		aggregated_labels : pd.Series
+			The aggregated (predicted) probability labels, typically between 0 and 1.
+
+		truth : pd.Series
+			The ground truth labels with the same index as aggregated_labels.
+			Can contain null values which will be filtered out.
+
+		Returns:
+		--------
+		pd.Series
+			A pandas Series containing the following metrics:
+			- AUC (Area Under the ROC Curve)
+			- Accuracy
+			- F1 score
+
+			The Series is indexed by values from the params.EvaluationMetricNames enum.
+			If truth has no valid values or is not binary, the metrics will be NaN.
+
+		Notes:
+		------
+		- The aggregated labels are thresholded at 0.5 to convert to binary predictions
+		- Metrics are only calculated if there are non-null values in truth and truth contains exactly 2 unique values
+		"""
+
+		metrics = pd.Series(index=params.EvaluationMetricNames.values())
+
+		non_null = ~truth.isnull()
+		truth_notnull = truth[non_null].to_numpy()
+
+		if (len(truth_notnull) > 0) and (np.unique(truth_notnull).size == 2):
+
+			yhat = (aggregated_labels > 0.5).astype(int)[non_null]
+			metrics[params.EvaluationMetricNames.AUC.value] = sk_metrics.roc_auc_score( truth_notnull, yhat)
+			metrics[params.EvaluationMetricNames.ACC.value] = sk_metrics.accuracy_score(truth_notnull, yhat)
+			metrics[params.EvaluationMetricNames.F1.value ] = sk_metrics.f1_score( 	 truth_notnull, yhat)
+
+		return metrics
+
 
 
 	def aim1_3_measuring_proposed_weights(self, preds, uncertainties) -> pd.DataFrame:
@@ -1104,10 +1116,10 @@ class AIM1_3:
 			for cln in weights.PROPOSED.index:
 				agg_labels[cln] = (preds * weights.PROPOSED.T[cln]).sum(axis=1)
 
-				confidence_scores[cln] = AIM1_3.calculate_confidence_scores(delta=preds, w=weights.PROPOSED.T[cln], n_workers=self.n_workers )
+				confidence_scores[cln] = CrowdCertainOrchestrator.calculate_confidence_scores(delta=preds, w=weights.PROPOSED.T[cln], n_workers=self.n_workers )
 
 				# Measuring the metrics
-				metrics[cln] = AIM1_3.get_AUC_ACC_F1(aggregated_labels=agg_labels[cln], truth=true_labels['test'].truth)
+				metrics[cln] = CrowdCertainOrchestrator.get_AUC_ACC_F1(aggregated_labels=agg_labels[cln], truth=true_labels['test'].truth)
 
 			return params.ResultType(aggregated_labels=agg_labels, confidence_scores=confidence_scores, metrics=metrics)
 
@@ -1141,7 +1153,7 @@ class AIM1_3:
 
 					agg_labels[m.value] = (workers_labels * w).sum(axis=1)
 
-					confidence_scores[m.value] = AIM1_3.calculate_confidence_scores( delta=workers_labels, w=w, n_workers=self.n_workers )
+					confidence_scores[m.value] = CrowdCertainOrchestrator.calculate_confidence_scores( delta=workers_labels, w=w, n_workers=self.n_workers )
 
 				return agg_labels, confidence_scores
 
@@ -1152,7 +1164,7 @@ class AIM1_3:
 			v_benchmarks = pd.concat( [v_benchmarks, v_other_benchmarks], axis=1)
 
 			# Measuring the metrics
-			metrics_benchmarks = pd.DataFrame({cln: AIM1_3.get_AUC_ACC_F1(aggregated_labels=v_benchmarks[cln], truth=true_labels['test'].truth) for cln in v_benchmarks.columns})
+			metrics_benchmarks = pd.DataFrame({cln: CrowdCertainOrchestrator.get_AUC_ACC_F1(aggregated_labels=v_benchmarks[cln], truth=true_labels['test'].truth) for cln in v_benchmarks.columns})
 
 			return params.ResultType(aggregated_labels=v_benchmarks, confidence_scores=F_benchmarks, metrics=metrics_benchmarks)
 
@@ -1213,12 +1225,12 @@ class AIM1_3:
 
 	@staticmethod
 	def wrapper(args: Dict, config: Settings, data, feature_columns) -> Tuple[Dict, params.Result2Type]:
-		return args, AIM1_3.core_measurements(data=data, n_workers=args['nl'], config=config, feature_columns=feature_columns, seed=args['seed'], use_parallelization_benchmarks=False)
+		return args, CrowdCertainOrchestrator.core_measurements(data=data, n_workers=args['nl'], config=config, feature_columns=feature_columns, seed=args['seed'], use_parallelization_benchmarks=False)
 
 
 	@staticmethod
 	def objective_function(config: Settings, data, feature_columns) -> Callable[[Dict], Tuple[Dict, params.Result2Type]]:
-		return functools.partial(AIM1_3.wrapper, config=config, data=data, feature_columns=feature_columns)
+		return functools.partial(CrowdCertainOrchestrator.wrapper, config=config, data=data, feature_columns=feature_columns)
 
 
 	def get_outputs(self) -> Dict[str, List[params.ResultType]]:
@@ -1286,7 +1298,7 @@ class AIM1_3:
 
 			input_list = [{'nl': nl, 'seed': seed} for nl in self.config.simulation.workers_list for seed in range(self.config.simulation.num_seeds)]
 
-			function = AIM1_3.objective_function(config=self.config, data=self.data, feature_columns=self.feature_columns)
+			function = CrowdCertainOrchestrator.objective_function(config=self.config, data=self.data, feature_columns=self.feature_columns)
 
 			if self.config.simulation.use_parallelization:
 				with multiprocessing.Pool(processes=min(self.config.simulation.max_parallel_workers, len(input_list))) as pool:
@@ -1339,7 +1351,7 @@ class AIM1_3:
 						'feature_columns'               : self.feature_columns,
 						'use_parallelization_benchmarks': self.config.simulation.use_parallelization}
 
-			df = AIM1_3.core_measurements(**params_dict).workers_strength.set_index('workers_strength').sort_index()
+			df = CrowdCertainOrchestrator.core_measurements(**params_dict).workers_strength.set_index('workers_strength').sort_index()
 
 			if self.config.output.save:
 				if USE_HD5F_STORAGE:

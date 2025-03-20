@@ -16,11 +16,13 @@ import pandas as pd
 import seaborn as sns
 import streamlit as st
 
+from crowd_certain.utilities.io.dataset_loader import find_dataset_path
+
 # Local imports
 from crowd_certain.utilities.parameters import params
-from crowd_certain.utilities.parameters.settings import Settings, ConfigManager
-from crowd_certain.utilities.io.dataset_loader import find_dataset_path
-from crowd_certain.utilities.utils import AIM1_3
+from crowd_certain.utilities.parameters.settings import ConfigManager, Settings
+from crowd_certain.utilities.utils import CrowdCertainOrchestrator
+
 
 class DashboardStyles:
     """Manages CSS styles for the dashboard."""
@@ -454,7 +456,7 @@ class SimulationRunner:
 
                 # Run the simulation for this dataset
                 try:
-                    results: params.ResultComparisonsType = AIM1_3.calculate_one_dataset(config=settings, dataset_name=dataset_name)
+                    results: params.ResultComparisonsType = CrowdCertainOrchestrator.calculate_one_dataset(config=settings, dataset_name=dataset_name)
 
                     # Store results for this dataset
                     st.session_state.results_by_dataset[dataset_value] = results

@@ -2,12 +2,15 @@
 Test script for the updated DatasetNames class and load_dataset function.
 """
 
-import pytest
-from crowd_certain.utilities.utils import AIM1_3
-from crowd_certain.utilities.parameters.settings import Settings
-from crowd_certain.utilities.parameters.params import DatasetNames
-from crowd_certain.utilities.io import dataset_loader
 from pathlib import Path
+
+import pytest
+
+from crowd_certain.utilities.io import dataset_loader
+from crowd_certain.utilities.parameters.params import DatasetNames
+from crowd_certain.utilities.parameters.settings import Settings
+from crowd_certain.utilities.utils import CrowdCertainOrchestrator
+
 
 def test_dataset_loader():
     """Test the dataset loader with the updated DatasetNames class."""

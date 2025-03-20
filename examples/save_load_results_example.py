@@ -5,13 +5,17 @@ This example demonstrates how to save simulation results to disk and load them l
 """
 
 import os
-from pathlib import Path
 import pickle
 from datetime import datetime
+from pathlib import Path
 
-from src.crowd_certain.utilities.utils import AIM1_3
-from crowd_certain.utilities.parameters.params import DatasetNames, UncertaintyTechniques, ConsistencyTechniques
-from crowd_certain.utilities.parameters.settings import Settings, OutputModes
+from crowd_certain.utilities.parameters.params import (
+    ConsistencyTechniques,
+    DatasetNames,
+    UncertaintyTechniques,
+)
+from crowd_certain.utilities.parameters.settings import OutputModes, Settings
+from src.crowd_certain.utilities.utils import CrowdCertainOrchestrator
 
 
 def save_results_example():
@@ -51,7 +55,7 @@ def save_results_example():
 
     # Run simulation
     try:
-        results = AIM1_3.calculate_one_dataset(config=config)
+        results = CrowdCertainOrchestrator.calculate_one_dataset(config=config)
         print("Simulation completed successfully!")
 
         # The results are automatically saved by the framework when using OutputModes.SAVE

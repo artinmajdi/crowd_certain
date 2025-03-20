@@ -11,7 +11,7 @@ from scipy.interpolate import make_interp_spline
 from crowd_certain.utilities.io.dataset_loader import LoadSaveFile
 from crowd_certain.utilities.io.hdf5_storage import HDF5Storage
 from crowd_certain.utilities.parameters import params
-from crowd_certain.utilities.utils import AIM1_3
+from crowd_certain.utilities.utils import CrowdCertainOrchestrator
 
 USE_HD5F_STORAGE = True
 
@@ -83,7 +83,7 @@ class Aim1_3_Data_Analysis_Results:
 		Returns:
 			Aim1_3_Data_Analysis_Results: Returns self to allow for method chaining.
 		"""
-		self.results_all_datasets  = AIM1_3.calculate_all_datasets(config=self.config)
+		self.results_all_datasets  = CrowdCertainOrchestrator.calculate_all_datasets(config=self.config)
 		return self
 
 
