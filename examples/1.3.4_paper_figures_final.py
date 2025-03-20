@@ -1,16 +1,24 @@
-from src.crowd_certain.utilities import utils
+import json
+import logging
+import multiprocessing
+import os
+import pathlib
+
+import pandas as pd
+
+from crowd_certain.utilities.parameters import params
 from crowd_certain.utilities.parameters.settings import ConfigManager
+from crowd_certain.utilities.visualizer import Aim1_3_Data_Analysis_Results
 
-def main():
-
-	config = ConfigManager.get_settings()
-
-	aim1_3 = utils.Aim1_3_Data_Analysis_Results(config=config).update()
-
-	# aim1_3.figure_F_heatmap( metric_name='F_eval_one_dataset_all_workers', dataset_name=DatasetNames.KR_VS_KP, figsize=(13,8), font_scale=2)
+config = ConfigManager.get_settings()
 
 
-if __name__ == '__main__':
+multiprocessing.set_start_method('spawn', force=True)
+logging.basicConfig(level=logging.DEBUG)
 
-	main()
-	print(' sf s  s')
+aim1_3 = Aim1_3_Data_Analysis_Results(config=config).update()
+
+
+aim1_3.figure_metrics_mean_over_seeds_per_dataset_per_worker(metric=params.EvaluationMetricNames.ACC, nl=3, figsize=(12,10), font_scale=1.8)
+
+

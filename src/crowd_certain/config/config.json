@@ -5,12 +5,7 @@
         "dataset_name": "ionosphere",
         "datasetNames": [
             "ionosphere",
-            "chess",
-            "mushroom",
-            "spambase",
-            "breast-cancer",
-            "banknote",
-            "sonar"
+            "chess"
         ],
         "non_null_samples": true,
         "random_state": 42,
@@ -28,7 +23,7 @@
         "low_dis": 0.4,
         "num_simulations": 3,
         "num_seeds": 3,
-        "use_parallelization": true,
+        "use_parallelization": false,
         "max_parallel_workers": 12,
         "simulation_methods": "random_states"
     },
