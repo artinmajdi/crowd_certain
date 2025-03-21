@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass
-from typing import Iterator, List, Literal, Type, TypeAlias, TypeVar
+from typing import Iterator, List, Literal, Tuple, Type, TypeAlias, TypeVar
 
 import pandas as pd
 
@@ -198,11 +198,12 @@ class ResultComparisonsType:
 
 
 
-WorkerID                      : TypeAlias = str  # Format: 'worker_0',               'worker_1',                                     etc.
+WorkerID                      : TypeAlias = str  # Format: 'worker_0','worker_1', etc.
+WorkerAndTruthID              : TypeAlias = Tuple[WorkerID, Literal['truth']]  # Format: ('worker_0', 'truth')
+SimulationID                  : TypeAlias = str  # Format: 'simulation_0','simulation_1', etc.
 DataMode                      : TypeAlias = Literal['train', 'test']
-WorkerReliabilitiesSeriesType: TypeAlias  = pd.Series  # Index               = WorkerID,                                      values = float reliability scores
+WorkerReliabilitiesSeriesType: TypeAlias  = pd.Series  # Index = WorkerID,  values = float reliability scores
 WorkerLabelsDFType            : TypeAlias = pd.DataFrame  # DataFrames with columns = ['truth', WorkerID...]
-# UncertaintiesDFType           : TypeAlias = pd.DataFrame  # DataFrame with columns  = [config.technique.uncertainty_techniques ...], index  = [data.index]
 ClassifierPredsDFType         : TypeAlias = pd.DataFrame  # DataFrames with columns = ['simulation_0', ...]
 
 ConsistencyTechniqueType: TypeAlias = Literal[ *ConsistencyTechniques.values() ]
