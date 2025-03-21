@@ -4,7 +4,8 @@ import multiprocessing
 import stat
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypedDict, Union
+from typing import (Any, Callable, Dict, List, Literal, Optional, Tuple,
+                    TypeAlias, TypedDict, Union, get_args)
 
 # Third-party imports
 import numpy as np
@@ -13,7 +14,6 @@ import scipy
 from scipy.special import bdtrc
 from sklearn import ensemble as sk_ensemble
 from sklearn import metrics as sk_metrics
-from typing_extensions import Protocol
 
 # Local imports
 from crowd_certain.utilities.benchmarks import BenchmarkTechniques
@@ -21,6 +21,10 @@ from crowd_certain.utilities.io import dataset_loader
 from crowd_certain.utilities.io.dataset_loader import LoadSaveFile
 from crowd_certain.utilities.io.hdf5_storage import HDF5Storage
 from crowd_certain.utilities.parameters import params
+from crowd_certain.utilities.parameters.params import (
+    ClassifierPredsDFType, ConsistencyTechniques, ConsistencyTechniqueType,
+    DataMode, UncertaintyTechniques, WorkerID, WorkerLabelsDFType,
+    WorkerReliabilitiesSeriesType)
 from crowd_certain.utilities.parameters.settings import Settings
 
 USE_HD5F_STORAGE = True
@@ -258,20 +262,26 @@ class CrowdCertainOrchestrator:
 		aim1_3 = cls(data=data, config=config, feature_columns=feature_columns, n_workers=n_workers, seed=seed)
 
 		# calculating uncertainty and predicted probability values
-		workers_reliabilities, workers_labels, uncertainties, classifiers_preds = ReliabilityCalculator.meauring_probs_uncertainties(config=config, n_workers=n_workers, seed=seed, data=data, feature_columns=feature_columns)
+		workers_reliabilities, workers_labels, uncertainties, consistencies, classifiers_preds = ReliabilityCalculator.generate(config=config, n_workers=n_workers, seed=seed, data=data, feature_columns=feature_columns)
 
-		# TODO: edited until here
 
-		# Adding accuracy for each worker and adding it to workers_strength
-		workers_reliabilities = CalculateMetrics.adding_accuracy_for_each_worker(n_workers=n_workers, preds=classifiers_preds, workers_labels=workers_labels, workers_assigned_reliabilities=workers_reliabilities)
+		workers_accruacies = CalculateMetrics.adding_accuracy_for_each_worker(n_workers=n_workers, preds=classifiers_preds, workers_labels=workers_labels, workers_assigned_reliabilities=workers_reliabilities)
 
 		# Calculating weights for proposed techniques and TAO & Sheng benchmarks
-		weights = CalculateWeights.get_weights( workers_labels    = classifiers_preds['test']['simulation_0'],
-												preds 			  = classifiers_preds['test']['mv'],
-												uncertainties 	  = uncertainties['test'],
-												noisy_true_labels = workers_labels['test'].drop(columns=['truth']),
-												n_workers		  = n_workers,
-												config			  = config)
+		weights = CalculateWeights.get_weights( classifiers_preds = classifiers_preds,
+												uncertainties 	  = uncertainties,
+												consistencies 	  = consistencies,
+												workers_labels	  = workers_labels,
+												n_workers      	  = n_workers,
+												config         	  = config)
+
+		# weights = CalculateWeights.get_weights( classifiers_preds = classifiers_preds, # ['test']['simulation_0']
+		# 										preds 			  = classifiers_preds['test']['mv'],
+		# 										uncertainties 	  = uncertainties,
+		# 										consistencies 	  = consistencies,
+		# 										noisy_true_labels = workers_labels,
+		# 										n_workers		  = n_workers,
+		# 										config			  = config)
 
 		# Calculating results for proposed techniques and benchmarks
 		results_proposed, results_benchmarks = aim1_3.measuring_nu_and_confidence_score(weights     = weights,
@@ -282,12 +292,13 @@ class CrowdCertainOrchestrator:
 		# merge workers_strength and weights
 		# merge_worker_strengths_and_weights()
 
-		return params.Result2Type( proposed		 = results_proposed,
-							benchmark        = results_benchmarks,
-							weight           = weights,
-							workers_strength = workers_reliabilities,
-							n_workers        = n_workers,
-							true_label       = workers_labels )
+		return params.Result2Type(  proposed 	   	   = results_proposed,
+									benchmark          = results_benchmarks,
+									weight             = weights,
+									workers_reliabilities  = workers_reliabilities,
+									workers_accruacies = workers_accruacies,
+									n_workers          = n_workers,
+									true_label         = workers_labels )
 
 
 	@staticmethod
@@ -418,7 +429,7 @@ class CrowdCertainOrchestrator:
 						'feature_columns'               : self.feature_columns,
 						'use_parallelization_benchmarks': self.config.simulation.use_parallelization}
 
-			df = CrowdCertainOrchestrator.core_measurements(**params_dict).workers_strength.set_index('workers_strength').sort_index()
+			df = CrowdCertainOrchestrator.core_measurements(**params_dict).workers_reliabilities.set_index('workers_strength').sort_index()
 
 			if self.config.output.save:
 				if USE_HD5F_STORAGE:
@@ -852,7 +863,11 @@ class CalculateWeights:
 
 
 	@staticmethod
-	def get_weights(config: Settings, workers_labels: pd.DataFrame, preds: pd.DataFrame, uncertainties: pd.DataFrame, noisy_true_labels: pd.DataFrame, n_workers: int) -> params.WeightType:
+	def get_weights(config: Settings, n_workers:int,
+					classifiers_preds: Dict[WorkerID, Dict[DataMode, ClassifierPredsDFType]],
+					uncertainties    : Dict[WorkerID, Dict[DataMode, Dict[UncertaintyTechniques, pd.Series]]],
+					consistencies    : Dict[WorkerID, Dict[DataMode, Dict[ConsistencyTechniques, Dict[UncertaintyTechniques, pd.Series]]]],
+					workers_labels   : Dict[WorkerID, Dict[DataMode, ClassifierPredsDFType]] ):
 		"""
 		Calculate weights for different methods (proposed, TAO, and SHENG).
 
@@ -879,10 +894,10 @@ class CalculateWeights:
 		"""
 
 		# Measuring weights for the proposed technique
-		weights_proposed = CalculateWeights.measuring_proposed_weights( preds=preds, uncertainties=uncertainties)
+		weights_proposed = CalculateWeights.measuring_proposed_weights( config=config, preds=preds, uncertainties=uncertainties)
 
 		# Benchmark accuracy measurement
-		weights_Tao = CalculateWeights.measuring_Tao_weights_based_on_actual_labels( workers_labels=workers_labels, noisy_true_labels=noisy_true_labels, n_workers=n_workers )
+		weights_Tao = CalculateWeights.measuring_Tao_weights_based_on_actual_labels( workers_labels=classifiers_preds, noisy_true_labels=workers_labels, n_workers=n_workers )
 
 		weights_Sheng = pd.DataFrame(1 / n_workers, index=weights_Tao.index, columns=weights_Tao.columns)
 
@@ -939,189 +954,225 @@ class ReliabilityCalculator:
 		Number of workers.
 	seed : int
 		Random seed for reproducibility.
+	data : Dict[DataMode, pd.DataFrame]
+		Dictionary containing training and test data.
+	feature_columns : list[str]
+		List of feature columns to be used for training classifiers.
 	"""
-	def __init__(self, config: 'Settings', n_workers: int, seed: int, data: pd.DataFrame, feature_columns: list[str]):
+	def __init__(self, config: 'Settings', n_workers: int, seed: int, data: Dict[DataMode, pd.DataFrame], feature_columns: list[str]):
 		self.config = config
 		self.n_workers = n_workers
 		self.seed = seed
-
+		self.data = data
+		self.feature_columns = feature_columns
+		# Initialize empty data structures with type hints
+		self.workers_reliabilities: WorkerReliabilitiesSeriesType = pd.Series()
+		self.workers_preds     : Dict[WorkerID, Dict[DataMode, pd.DataFrame]]                                                        = {}
+		self.uncertainties     : Dict[WorkerID, Dict[DataMode, Dict[UncertaintyTechniques, pd.Series]]]                              = {}
+		self.consistencies     : Dict[WorkerID, Dict[DataMode, Dict[ConsistencyTechniques, Dict[UncertaintyTechniques, pd.Series]]]] = {}
+		self.classifiers_preds : Dict[WorkerID, Dict[DataMode, ClassifierPredsDFType]]                                               = {}
+		self.workers_labels    : Dict[DataMode, WorkerLabelsDFType]                                                                  = {}
 
 	@staticmethod
-	def calculate_uncertainty(df: pd.DataFrame, config: 'Settings') -> pd.DataFrame:
+	def calculate_uncertainty(df: pd.DataFrame, config: 'Settings') -> Dict[UncertaintyTechniques, pd.Series]:
 		"""
 		Calculate uncertainty metrics for the given DataFrame based on configuration settings.
 
 		This function computes various uncertainty measures across rows of data, where each row
 		represents a sample and each column represents a different simulation's prediction.
 
-		Parameters:
-		-----------
+		Parameters
+		----------
 		df : pd.DataFrame
 			Input DataFrame containing integer values, where each row is a sample for one worker and
 			each column represents a different simulation's prediction.
-
 		config : Settings
 			Configuration object containing settings for uncertainty calculation,
 			particularly the list of uncertainty techniques to apply.
 
-		Returns:
-		--------
-		pd.DataFrame
-			A DataFrame with the same index as the input df, containing columns for each
-			requested uncertainty measure. Available uncertainty techniques include:
-			- STD: Standard deviation across annotations
-			- ENTROPY: Normalized Shannon entropy of the annotations
-			- CV: Coefficient of variation (std/mean), normalized with tanh to [0,1]
-			- PI: Prediction interval (difference between 75th and 25th percentiles)
-			- CI: 95% confidence interval width using t-distribution
+			Returns
+			-------
+		Dict[UncertaintyTechniques, pd.Series]
+			A dictionary mapping uncertainty techniques to Series of uncertainty values.
+			Available uncertainty techniques include:
+				- STD: Standard deviation across annotations
+				- ENTROPY: Normalized Shannon entropy of the annotations
+				- CV: Coefficient of variation (std/mean), normalized with tanh to [0,1]
+				- PI: Prediction interval (difference between 75th and 25th percentiles)
+				- CI: 95% confidence interval width using t-distribution
 
-		Notes:
-		------
-		The function handles edge cases with zero values by adding a small epsilon to denominators
-		and log arguments to avoid division by zero or undefined logarithms.
+		Raises
+			------
+		ValueError
+			If the input DataFrame has fewer than two columns.
+
+		Notes
+		-----
+			The function handles edge cases with zero values by adding a small epsilon to denominators
+			and log arguments to avoid division by zero or undefined logarithms.
 		"""
+		# Initialize result dictionary
+		df_uncertainties: Dict[UncertaintyTechniques, pd.Series] = {}
 
-		df_uncertainties = pd.DataFrame(columns=[tech.value for tech in config.technique.uncertainty_techniques], index=df.index)
-
+		# Validate input
 		if len(df.columns) <= 1:
 			raise ValueError("Input DataFrame must have at least two columns.")
 			return df_uncertainties
 
-
+		# Small constant to avoid division by zero
 		epsilon = np.finfo(float).eps
 
-		# Convert to integer (0 or 1)
-		df = (df > 0.5).astype(int)
+		# Convert to binary values (0 or 1)
+		df_binary = (df > 0.5).astype(int)
 
+		# Calculate requested uncertainty metrics
 		for tech in config.technique.uncertainty_techniques:
-
 			if tech is params.UncertaintyTechniques.STD:
-				df_uncertainties[tech.value] = df.std(axis=1)
+				# Standard deviation across annotations
+				df_uncertainties[tech] = df_binary.std(axis=1)
 
 			elif tech is params.UncertaintyTechniques.ENTROPY:
 				# Normalize each row to sum to 1
-				df_normalized = df.div(df.sum(axis=1) + epsilon, axis=0)
+				df_normalized = df_binary.div(df_binary.sum(axis=1) + epsilon, axis=0)
 				# Calculate entropy with logarithm base e
 				entropy = -(df_normalized * np.log(df_normalized + epsilon)).sum(axis=1)
 				# Normalize entropy to [0, 1] by dividing by log(n)
-				df_uncertainties[tech.value] = entropy / np.log(df.shape[1])
+				df_uncertainties[tech] = entropy / np.log(df_binary.shape[1])
 
 			elif tech is params.UncertaintyTechniques.CV:
 				# Coefficient of variation: std/mean, normalized with tanh to bound [0, 1]
-				cv = df.std(axis=1) / (df.mean(axis=1) + epsilon)
-				df_uncertainties[tech.value] = np.tanh(cv)
+				cv = df_binary.std(axis=1) / (df_binary.mean(axis=1) + epsilon)
+				df_uncertainties[tech] = np.tanh(cv)
 
 			elif tech is params.UncertaintyTechniques.PI:
 				# Prediction interval: difference between 75th and 25th percentiles
-				q75 = np.percentile(df, 75, axis=1)
-				q25 = np.percentile(df, 25, axis=1)
-				df_uncertainties[tech.value] = q75 - q25
+				q75 = np.percentile(df_binary, 75, axis=1)
+				q25 = np.percentile(df_binary, 25, axis=1)
+				df_uncertainties[tech] = q75 - q25
 
 			elif tech is params.UncertaintyTechniques.CI:
-				# Calculate 95% confidence interval width using t-distribution, which is more appropriate for small sample sizes
-				stds = df.std(axis=1)
-				n = df.shape[1]
+				# Calculate 95% confidence interval width using t-distribution
+				stds = df_binary.std(axis=1)
+				n = df_binary.shape[1]
 				t_critical = scipy.stats.t.ppf(0.975, n-1)  # 95% CI uses 0.975 (two-tailed)
-
 				# Calculate margin of error
 				margin = t_critical * stds / np.sqrt(n)
-
 				# Calculate CI width (upper - lower)
 				ci_width = 2 * margin
-
 				# Handle cases with zero standard deviation
-				df_uncertainties[tech.value] = ci_width.fillna(0)
+				df_uncertainties[tech] = ci_width.fillna(0)
 
 		return df_uncertainties
 
 
-	@staticmethod
-	def calculate_consistency(uncertainty: Union[pd.DataFrame, pd.Series, np.ndarray], config: 'Settings') -> pd.DataFrame:
+	@classmethod
+	def generate(cls, config: 'Settings', n_workers: int, data: Dict[DataMode, pd.DataFrame],
+			  feature_columns: list[str], seed: int) -> tuple[
+				WorkerReliabilitiesSeriesType,
+				Dict[DataMode, WorkerLabelsDFType],
+				Dict[WorkerID, Dict[DataMode, Dict[UncertaintyTechniques, pd.Series]]],
+				Dict[WorkerID, Dict[DataMode, Dict[ConsistencyTechniques, Dict[UncertaintyTechniques, pd.Series]]]],
+				Dict[WorkerID, Dict[DataMode, ClassifierPredsDFType]]
+			]:
+		"""
+		Generate worker reliabilities, labels, uncertainties, consistencies, and classifier predictions.
 
-		def initialize_consistency():
-			nonlocal consistency
-			upper_level = [l.value for l in config.technique.consistency_techniques]
+		This class method creates an instance of ReliabilityCalculator and uses it to generate
+		all the necessary data for worker reliability analysis.
 
-			if isinstance(uncertainty, pd.DataFrame):
-				# The use of OrderedDict helps preserving the order of columns.
-				levels = [list(OrderedDict.fromkeys(uncertainty.columns.get_level_values(i))) for i in range(uncertainty.columns.nlevels)]
+		Parameters
+		----------
+		config : Settings
+			Configuration object containing settings for the reliability calculation.
+		n_workers : int
+			Number of workers to generate.
+		data : Dict[DataMode, pd.DataFrame]
+			Dictionary containing training and test data.
+		feature_columns : list[str]
+			List of feature columns to be used for training classifiers.
+		seed : int
+			Random seed for reproducibility.
 
-				new_columns 	 = [upper_level] + levels
-				new_columnsnames = ['consistency_technique'] + uncertainty.columns.names
+		Returns
+		-------
+		tuple
+			A tuple containing:
+			- workers_reliabilities: Series of worker reliability scores
+			- workers_labels: Dictionary of worker labels for each data mode
+			- uncertainties: Dictionary of uncertainty metrics for each worker
+			- consistencies: Dictionary of consistency metrics for each worker
+			- classifiers_preds: Dictionary of classifier predictions for each worker
+		"""
+		# Create an instance of the class
+		RC = cls(config=config, n_workers=n_workers, seed=seed,
+									data=data, feature_columns=feature_columns)
 
-				columns = pd.MultiIndex.from_product(new_columns, names=new_columnsnames)
-				consistency = pd.DataFrame(columns=columns, index=uncertainty.index)
-
-			elif isinstance(uncertainty, pd.Series):
-				consistency = pd.DataFrame(columns=upper_level, index=uncertainty.index)
-
-			elif isinstance(uncertainty, np.ndarray):
-				consistency = pd.DataFrame(columns=upper_level, index=range(uncertainty.shape[0]))
-
-			return consistency
-
-		consistency = initialize_consistency()
-
-		for tech in config.technique.consistency_techniques:
-			if tech is params.ConsistencyTechniques.ONE_MINUS_UNCERTAINTY:
-				consistency[tech.value] = 1 - uncertainty
-
-			elif tech is params.ConsistencyTechniques.ONE_DIVIDED_BY_UNCERTAINTY:
-				consistency[tech.value] = 1 / (uncertainty + np.finfo(float).eps)
-
-		# Making the worker the highest level in the columns
-		if isinstance(uncertainty, pd.DataFrame):
-			return consistency.swaplevel(0, 1, axis=1)
-
-		return consistency
-
-
-	@staticmethod
-	def meauring_probs_uncertainties(config: 'Settings', n_workers: int, data: dict[str, pd.DataFrame], feature_columns: list[str], seed: int) -> tuple[ pd.Series, Dict[str, pd.DataFrame], Dict[str, Dict[str, pd.DataFrame]], Dict[str, Dict[str, pd.DataFrame]] ]:
-
-		# Assigning strengths randomly to each worker
-		workers_reliabilities, workers_labels = WorkersGeneration.generate(config=config, data=data, n_workers=n_workers)
+		# Generate worker reliabilities and labels
+		workers_reliabilities, workers_labels = WorkersGeneration.generate(
+			config=config, data=data, n_workers=n_workers)
 
 		# Calculating classifiers predictions for all workers
-		classifiers_preds = ReliabilityCalculator.calculate_classifiers_preds_for_all_workers( data=data, config=config, feature_columns=feature_columns, workers_labels=workers_labels, seed=seed)
+		classifiers_preds = RC.calculate_classifiers_preds_for_all_workers( data=data, config=config, feature_columns=feature_columns, workers_labels=workers_labels, seed=seed)
 
 		# Calculating uncertainties for all workers
-		uncertainties = ReliabilityCalculator.calculate_uncertainties_for_all_workers(classifiers_preds_all_workers=classifiers_preds, config=config)
+		uncertainties = RC.calculate_uncertainties_for_all_workers(classifiers_preds_all_workers=classifiers_preds, config=config)
 
-		return workers_reliabilities, workers_labels, uncertainties, classifiers_preds
+		# Calculating consistency
+		consistencies = RC.calculate_consistencies_for_all_workers(uncertainties=uncertainties, config=config)
+
+		return workers_reliabilities, workers_labels, uncertainties, consistencies, classifiers_preds
 
 
 	@staticmethod
-	def calculate_classifiers_preds_for_all_workers(data: dict[str, pd.DataFrame], config: 'Settings', feature_columns: list[str], workers_labels: dict[str, pd.DataFrame], seed: int) -> dict[str, dict[str, pd.DataFrame]]:
+	def calculate_classifiers_preds_for_all_workers(data: Dict[DataMode, pd.DataFrame],
+												config: 'Settings',
+												feature_columns: list[str],
+												workers_labels: Dict[DataMode, WorkerLabelsDFType],
+												seed: int) -> Dict[WorkerID, Dict[DataMode, ClassifierPredsDFType]]:
 		"""
-			Predicts labels for both training and test data using trained classifiers.
+		Predict labels for both training and test data using trained classifiers.
 
-			This function trains a classifier based on the simulation method specified in the configuration
-			and uses it to predict labels for both training and test datasets. The predictions are stored
-			in the `predicted_labels_all_sims` dictionary.
+		This function trains a classifier for each worker based on the simulation method
+		specified in the configuration and uses it to predict labels for both training
+		and test datasets.
 
-			Parameters:
+		Parameters
 			----------
-			data : dict[str, pd.DataFrame]
+			data : Dict[DataMode, pd.DataFrame]
 				The dataset containing training and test data.
-			config : 'Settings'
+		config : Settings
 				The configuration object containing simulation settings.
 			feature_columns : list[str]
 				List of feature columns to be used for training classifiers.
-			workers_labels : dict[str, pd.DataFrame]
+			workers_labels : Dict[DataMode, WorkerLabelsDFType]
 				Dictionary containing ground truth labels for each worker.
 			seed : int
 				Random seed for classifier training.
 
-			Returns:
-			--------
-				dict[str, dict[str, dict[str, pd.DataFrame]]]
-				Dictionary containing predicted labels for both training and test data.
+		Returns
+		-------
+				Dict[WorkerID, Dict[DataMode, ClassifierPredsDFType]]
+			Dictionary containing predicted labels for both training and test data,
+			organized by worker ID and data mode.
 		"""
-		def calculate_classifiers_preds_for_one_worker(workers_name: str) -> dict[str, pd.DataFrame]:
-			output = { 'train': pd.DataFrame(index=data['train'].index),
-						'test': pd.DataFrame(index=data['test'].index)}
+		def calculate_classifiers_preds_for_one_worker(worker_name: str) -> Dict[DataMode, ClassifierPredsDFType]:
+			"""
+			Calculate classifier predictions for a single worker.
 
+			Parameters
+			----------
+			worker_name : str
+				The name/ID of the worker.
+
+			Returns
+			-------
+			Dict[DataMode, ClassifierPredsDFType]
+				Dictionary containing predictions for train and test data.
+			"""
+			# Initialize output dataframes with the same index as the input data
+			output = {mode: pd.DataFrame(index=data[mode].index) for mode in get_args(DataMode)}
+
+			# Run simulations
 			for sim_num in range(config.simulation.num_simulations):
 
 				# training a random forest on the aformentioned labels
@@ -1138,11 +1189,73 @@ class ReliabilityCalculator:
 		# Getting the list of worker identifiers (excluding 'truth')
 		workers_names = set(workers_labels['train'].columns).difference({'truth'})
 
-		return {wsi: calculate_classifiers_preds_for_one_worker(workers_name=wsi) for wsi in workers_names}
+		# Calculate predictions for each worker
+		return {worker: calculate_classifiers_preds_for_one_worker(worker_name=worker)
+				for worker in worker_names}
 
 
 	@staticmethod
-	def calculate_uncertainties_for_all_workers(classifiers_preds_all_workers: Dict[str, Dict[str, pd.DataFrame]], config: 'Settings') -> Dict[str, Dict[str, pd.DataFrame]]:
+	def calculate_consistencies_for_all_workers(uncertainties: Dict[WorkerID, Dict[DataMode, Dict[UncertaintyTechniques, pd.Series]]],
+												config: 'Settings') -> Dict[WorkerID, Dict[DataMode, Dict[ConsistencyTechniques, Dict[UncertaintyTechniques, pd.Series]]]]:
+		"""
+		Calculate consistency metrics for all workers based on uncertainty values.
+
+		This function transforms uncertainty metrics into consistency metrics using
+		various techniques specified in the configuration.
+
+		Parameters
+		----------
+		uncertainties : Dict[WorkerID, Dict[DataMode, Dict[UncertaintyTechniques, pd.Series]]]
+			Dictionary containing uncertainty metrics for each worker, data mode, and uncertainty technique.
+		config : Settings
+			Configuration object containing settings for consistency calculation.
+
+		Returns
+		-------
+		Dict[WorkerID, Dict[DataMode, Dict[ConsistencyTechniques, Dict[UncertaintyTechniques, pd.Series]]]]
+			Dictionary containing consistency metrics for each worker, data mode, consistency technique,
+			and uncertainty technique.
+		"""
+		def calculate_consistency_metrics(uncertainty: Dict[UncertaintyTechniques, pd.Series]) -> Dict[ConsistencyTechniques, Dict[UncertaintyTechniques, pd.Series]]:
+			"""
+			Calculate consistency metrics for a single set of uncertainty values.
+
+			Parameters
+			----------
+			uncertainty : Dict[UncertaintyTechniques, pd.Series]
+				Dictionary mapping uncertainty techniques to their corresponding values.
+
+			Returns
+			-------
+			Dict[ConsistencyTechniques, Dict[UncertaintyTechniques, pd.Series]]
+				Dictionary of consistency metrics organized by consistency technique and uncertainty technique.
+			"""
+			# Initialize nested dictionary structure
+			consistency: Dict[ConsistencyTechniques, Dict[UncertaintyTechniques, pd.Series]] = {ct: {} for ct in config.technique.consistency_techniques}
+
+			for ut in uncertainty.keys():
+				for ct in config.technique.consistency_techniques:
+
+					if ct is params.ConsistencyTechniques.ONE_MINUS_UNCERTAINTY:
+						consistency[ct][ut] = 1 - uncertainty[ut]
+
+					elif ct is params.ConsistencyTechniques.ONE_DIVIDED_BY_UNCERTAINTY:
+						consistency[ct][ut] = 1 / (uncertainty[ut] + np.finfo(float).eps)
+
+			return consistency
+
+		consistensies: Dict[WorkerID, Dict[DataMode, Dict[ConsistencyTechniques, Dict[UncertaintyTechniques, pd.Series]]]] = {}
+
+		for wsi in uncertainties.keys():
+			consistensies[wsi] = { mode: calculate(uncertainty=uncertainties[wsi][mode], config=config)
+									for mode in get_args(DataMode)}
+
+		return consistensies
+
+
+	@staticmethod
+	def calculate_uncertainties_for_all_workers(classifiers_preds_all_workers: Dict[WorkerID, Dict[DataMode, ClassifierPredsDFType]],
+												config: 'Settings') -> Dict[WorkerID, Dict[DataMode, Dict[UncertaintyTechniques, pd.Series]]]:
 		"""
 		Calculate uncertainties for all workers based on classifier predictions across simulations.
 
@@ -1151,32 +1264,30 @@ class ReliabilityCalculator:
 
 		Parameters
 		----------
-		classifiers_preds_all_simulations : Dict[str, Dict[str, Dict[str, pd.DataFrame]]]
+		classifiers_preds_all_workers : Dict[WorkerID, Dict[DataMode, ClassifierPredsDFType]]
 			A nested dictionary structure containing classifier predictions for all simulations.
-			The hierarchy is: {worker_id -> {split_type -> {simulation_id -> DataFrame}}},
-			where split_type is either 'train' or 'test'.
+			The hierarchy is: {worker_id -> {data_mode -> DataFrame}},
+			where data_mode is either 'train' or 'test'.
 
 		config : Settings
 			Configuration object containing settings for uncertainty calculation.
 
 		Returns
 		-------
-		Dict[str, Dict[str, pd.DataFrame]]
+		Dict[WorkerID, Dict[DataMode, Dict[UncertaintyTechniques, pd.Series]]]
 			A dictionary mapping worker IDs to their uncertainty metrics for both training and testing data.
-			Structure: {worker_id -> {'train': DataFrame, 'test': DataFrame}},
-			where each DataFrame contains the calculated uncertainty metrics.
+			Structure: {worker_id -> {data_mode -> {uncertainty_technique -> pd.Series}}}
 		"""
 
-		uncertainties: Dict[str, Dict[str, pd.DataFrame]] = {}
+		uncertainties: Dict[WorkerID, Dict[DataMode, Dict[UncertaintyTechniques, pd.Series]]] = {}
 
 		# Loop over each worker
-		for wsi in classifiers_preds_all_workers:
+		for worker_id in classifiers_preds_all_workers:
 
 			# uncertainties for each worker over all simulations
-			uncertainties[wsi] = {
-				'train': ReliabilityCalculator.calculate_uncertainty(df=classifiers_preds_all_workers[wsi]['train'], config=config),
-				'test':  ReliabilityCalculator.calculate_uncertainty(df=classifiers_preds_all_workers[wsi]['test'] , config=config)
-			}
+			uncertainties[worker_id] = {
+			mode: ReliabilityCalculator.calculate_uncertainty(df=classifiers_preds_all_workers[worker_id][mode], config=config)
+						for mode in get_args(DataMode)}
 
 		return uncertainties
 
@@ -1188,7 +1299,7 @@ class CalculateMetrics:
 
 
 	@staticmethod
-	def adding_accuracy_for_each_worker(n_workers: int, preds: pd.DataFrame, workers_labels: pd.DataFrame, workers_assigned_reliabilities: pd.Series) -> pd.DataFrame:
+	def adding_accuracy_for_each_worker(n_workers: int, preds: Dict[WorkerID, Dict[DataMode, ClassifierPredsDFType]], workers_labels: Dict[DataMode, WorkerLabelsDFType], workers_assigned_reliabilities: WorkerReliabilitiesSeriesType) -> pd.DataFrame:
 		"""
 		Calculate and add accuracy measures for each worker in the crowd-sourcing task.
 
@@ -1203,24 +1314,23 @@ class CalculateMetrics:
 		Note:
 			- This is a non-local function that modifies the outer scope variables: workers_strength, preds, and truth
 		"""
-		reliabilities = workers_assigned_reliabilities.to_frame(name='reliability')
-		reliabilities['accuracy-test-classifier'] = 0.0
-		reliabilities['accuracy-test'] = 0.0
+		workers_accruacies: pd.DataFrame = workers_assigned_reliabilities.to_frame(name='reliability')
+		workers_accruacies['accuracy-test-classifier'] = 0.0
+		workers_accruacies['accuracy-test'] = 0.0
 
-		for i in range(n_workers):
-			wsi = f'worker_{i}'
+		for wsi in preds.keys():
 
 			# accuracy of classifier in simulation_0
-			reliabilities.loc[wsi, 'accuracy-test-classifier'] = ( preds['test']['simulation_0'][wsi] == workers_labels['test'].truth).mean()
+			workers_accruacies.loc[wsi, 'accuracy-test-classifier'] = ( preds[wsi]['test']['simulation_0'] == workers_labels['test'].truth).mean()
 
 			# accuracy of noisy true labels for each worker
-			reliabilities.loc[wsi, 'accuracy-test'] 		     = ( workers_labels['test'][wsi] == workers_labels['test'].truth).mean()
+			workers_accruacies.loc[wsi, 'accuracy-test'] 		   = ( workers_labels['test'][wsi] == workers_labels['test'].truth).mean()
 
-		return reliabilities
+		return workers_accruacies
 
 
 	@staticmethod
-	def get_accuracy(aggregated_labels: pd.DataFrame, n_workers, delta_benchmark, truth):
+	def get_accuracy(aggregated_labels: pd.DataFrame, n_workers: int, delta_benchmark: pd.DataFrame, truth: pd.Series) -> pd.DataFrame:
 		"""
 		Calculates the accuracy of various crowdsourcing aggregation methods by comparing
 		their predictions against ground truth.
@@ -1282,7 +1392,7 @@ class CalculateMetrics:
 			yhat = (aggregated_labels > 0.5).astype(int)[non_null]
 			metrics[params.EvaluationMetricNames.AUC.value] = sk_metrics.roc_auc_score( truth_notnull, yhat)
 			metrics[params.EvaluationMetricNames.ACC.value] = sk_metrics.accuracy_score(truth_notnull, yhat)
-			metrics[params.EvaluationMetricNames.F1.value ] = sk_metrics.f1_score( 	 truth_notnull, yhat)
+			metrics[params.EvaluationMetricNames.F1.value ] = sk_metrics.f1_score( 	    truth_notnull, yhat)
 
 		return metrics
 
@@ -1308,18 +1418,13 @@ class WorkersGeneration:
 		generate(config, data, n_workers)    : Class method to generate worker labels and reliabilities
 	"""
 
-	# Type definitions for better code navigation
-	WorkerID = str  # Format: 'worker_0', 'worker_1', etc.
-	DataMode = Literal['train', 'test']
-	InputDataDict = Dict[DataMode, pd.DataFrame]  # DataFrame with ground truth in 'true' column
-
-	def __init__(self, config: 'Settings', n_workers: int):
+	def __init__(self, config: 'Settings', n_workers: int) -> None:
 		self.config = config
 		self.n_workers = n_workers
-		self.workers_assigned_reliabilities: pd.Series[float] = None  # Index=WorkerID, values=reliability scores
-		self.workers_labels: Dict[Literal['train', 'test'], pd.DataFrame] = None  # DataFrame with columns=['truth', 'worker_0', ...]
+		self.workers_assigned_reliabilities: WorkerReliabilitiesSeriesType | None = None
+		self.workers_labels: Dict[DataMode, WorkerLabelsDFType] | None = None
 
-	def assign_reliabilities_to_each_worker(self) -> 'WorkersGeneration':
+	def assign_reliabilities_to_each_worker(self) -> WorkerReliabilitiesSeriesType:
 		"""
 		Assigns random reliability scores to each worker in the crowdsourcing task.
 
@@ -1329,8 +1434,8 @@ class WorkersGeneration:
 
 		Returns
 		-------
-		WorkersGeneration
-			Returns self for method chaining.
+		WorkerReliabilities
+			Returns the reliability scores for each worker.
 
 		Notes
 		-----
@@ -1348,9 +1453,9 @@ class WorkersGeneration:
 		# Assigning reliabilities to each worker
 		self.workers_assigned_reliabilities = pd.Series(workers_reliabilities_array, index=[f'worker_{j}' for j in range(self.n_workers)])
 
-		return self
+		return self.workers_assigned_reliabilities
 
-	def create_worker_label_set(self, data: Dict[Literal['train', 'test'], pd.DataFrame]) -> 'WorkersGeneration':
+	def create_worker_label_set(self, data: Dict[DataMode, pd.DataFrame]) -> Dict[DataMode, WorkerLabelsDFType]:
 		"""
 		Creates simulated worker label sets based on ground truth and worker reliability.
 
@@ -1358,12 +1463,16 @@ class WorkersGeneration:
 		to the ground truth labels based on each worker's assigned reliability. The process
 		simulates how human annotators with varying skill levels would label the same data.
 
-		data : Dict[Literal['train', 'test'], pd.DataFrame]
+		Parameters
+		----------
+		data : Dict[DataMode, pd.DataFrame]
 			Dictionary containing training and testing DataFrames with ground truth labels
 			in a column named 'true'. Expected keys are 'train' and 'test'.
 
-		WorkersGeneration
-			Returns self for method chaining.
+		Returns
+		-------
+		Dict[DataMode, WorkerLabelsDFType]
+			Returns the worker labels for each data mode.
 
 		The method:
 		1. Takes each sample's ground truth and creates noisy versions based on worker reliability
@@ -1416,7 +1525,6 @@ class WorkersGeneration:
 			3. Flipping the binary labels for samples identified as incorrectly labeled
 			"""
 
-
 			# number of samples and workers/workers
 			num_samples = truth_array.shape[0]
 
@@ -1450,6 +1558,9 @@ class WorkersGeneration:
 				DataFrame with columns for the 'truth' and each worker's labels.
 				The index is preserved from the input DataFrame.
 			"""
+			if self.workers_assigned_reliabilities is None:
+				raise ValueError("Worker reliabilities must be assigned before creating label sets")
+
 			workers_labels = pd.DataFrame({'truth': mdata.true}, index=mdata.index)
 
 			for wsi, worker_reliability in self.workers_assigned_reliabilities.items():
@@ -1457,12 +1568,12 @@ class WorkersGeneration:
 
 			return workers_labels
 
-		self.workers_labels = {mode: do_generate(mdata=data[mode]) for mode in ['train', 'test']}
+		self.workers_labels: Dict[DataMode, WorkerLabelsDFType] = {mode: do_generate(mdata=data[mode]) for mode in get_args(DataMode)}
 
-		return self
+		return self.workers_labels
 
 	@classmethod
-	def generate(cls, config: 'Settings', data: Dict[Literal['train', 'test'], pd.DataFrame], n_workers: int) -> Tuple[pd.Series, Dict[Literal['train', 'test'], pd.DataFrame]]:
+	def generate(cls, config: 'Settings', data: Dict[DataMode, pd.DataFrame], n_workers: int) -> Tuple[WorkerReliabilitiesSeriesType, Dict[DataMode, WorkerLabelsDFType]]:
 		"""
 		Generate simulated worker labels and reliabilities for crowdsourcing tasks.
 
@@ -1474,16 +1585,16 @@ class WorkersGeneration:
 		----------
 		config : Settings
 			Configuration object containing simulation parameters
-		data : Dict[Literal['train', 'test'], pd.DataFrame]
+		data : Dict[DataMode, pd.DataFrame]
 			Dictionary containing training and test data with ground truth labels
 		n_workers : int
 			Number of workers to simulate
 
 		Returns
 		-------
-		Tuple[pd.Series, Dict[Literal['train', 'test'], pd.DataFrame]]
-			- pd.Series: Worker reliability scores indexed by worker IDs
-			- Dict[Literal['train', 'test'], pd.DataFrame]: Worker labels for train and test sets
+		Tuple[WorkerReliabilitiesSeriesType, Dict[DataMode, WorkerLabelsDFType]]
+			- WorkerReliabilities: Worker reliability scores indexed by worker IDs
+			- WorkerLabels: Worker labels for train and test sets
 				Format: {'train'|'test': DataFrame(columns=['truth', 'worker_0', 'worker_1', ...])}
 
 		Notes
@@ -1494,5 +1605,8 @@ class WorkersGeneration:
 		WG = cls(config=config, n_workers=n_workers)
 		WG.assign_reliabilities_to_each_worker()
 		WG.create_worker_label_set(data=data)
+
+		if WG.workers_assigned_reliabilities is None or WG.workers_labels is None:
+			raise RuntimeError("Failed to generate worker reliabilities or labels")
 
 		return WG.workers_assigned_reliabilities, WG.workers_labels

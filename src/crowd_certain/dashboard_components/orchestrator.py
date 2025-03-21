@@ -13,13 +13,16 @@ from typing import Callable, Dict, List, Tuple, Union
 import numpy as np
 import pandas as pd
 
-from crowd_certain.utilities.parameters import params
-from crowd_certain.utilities.io.hdf5_storage import HDF5Storage
-from crowd_certain.utilities.parameters.settings import Settings
-from crowd_certain.utilities._components.worker_simulation import WorkerSimulator
-from crowd_certain.utilities._components.weighting_schemes import WeightingSchemes
-from crowd_certain.utilities._components.confidence_scoring import ConfidenceScorer
+from crowd_certain.utilities._components.confidence_scoring import \
+    ConfidenceScorer
 from crowd_certain.utilities._components.metrics import MetricsCalculator
+from crowd_certain.utilities._components.weighting_schemes import \
+    WeightingSchemes
+from crowd_certain.utilities._components.worker_simulation import \
+    WorkerSimulator
+from crowd_certain.utilities.io.hdf5_storage import HDF5Storage
+from crowd_certain.utilities.parameters import params
+from crowd_certain.utilities.parameters.settings import Settings
 
 # Whether to use HDF5 storage for saving/loading results
 USE_HD5F_STORAGE = True
@@ -105,7 +108,7 @@ class Orchestrator:
             proposed=results_proposed,
             benchmark=results_benchmarks,
             weight=weights,
-            workers_strength=workers_strength,
+            workers_reliabilities=workers_strength,
             n_workers=n_workers,
             true_label=true_labels
         )

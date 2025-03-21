@@ -1,51 +1,47 @@
 from __future__ import annotations
-from dataclasses import dataclass
+
 import enum
-from typing import Type, TypeVar, List, Iterator
+from dataclasses import dataclass
+from typing import Iterator, List, Literal, Type, TypeAlias, TypeVar
 
 import pandas as pd
 
-# from crowd_certain.utilities.parameters.settings import Settings
-
 T = TypeVar('T', bound='EnumWithHelpers')
 class EnumWithHelpers(enum.Enum):
-    @classmethod
-    def members(cls: Type[T]) -> List[T]:
-        return list(cls.__members__.values())
+	"""
+	EnumWithHelpers extends the basic Enum class with additional helper methods.
 
-    @classmethod
-    def all(cls: Type[T]) -> List[T]:
-        return list(cls)
+	This class adds utility methods for working with enum members, making it easier
+	to access members as lists, iterate through them, and convert them to strings.
 
-    @classmethod
-    def values(cls: Type[T]) -> List[str]:
-        return [member.value for member in cls]
+	Methods:
+		members(): Returns a list of all enum members.
+		all(): Returns a list of all enum values (same as members).
+		values(): Returns a list of all enum member values.
+		__iter__(): Makes the enum directly iterable, yielding member names.
+		__str__(): Custom string representation of enum members. If the value is a tuple,
+					returns the first element of the tuple, otherwise returns the value as a string.
+	"""
+	@classmethod
+	def members(cls: Type[T]) -> List[T]:
+		return list(cls.__members__.values())
 
-    def __iter__(self: T) -> Iterator[str]:
-        return iter(self.__members__.keys())
+	@classmethod
+	def all(cls: Type[T]) -> List[T]:
+		return list(cls)
 
-    def __str__(self) -> str:
-        if isinstance(self.value, tuple) and len(self.value) > 0:
-            return self.value[0]
-        return str(self.value)
+	@classmethod
+	def values(cls: Type[T]) -> List[str]:
+		return [member.value for member in cls]
 
-# def members(cls):  # Untyped
+	def __iter__(self: T) -> Iterator[str]:
+		return iter(self.__members__.keys())
 
-# 	# Add the members class method
-# 	cls.members: Callable[[], list[enum.Enum]] = classmethod(lambda cls2: list(cls2.__members__))
+	def __str__(self) -> str:
+		if isinstance(self.value, tuple) and len(self.value) > 0:
+			return self.value[0]
+		return str(self.value)
 
-# 	# Adding all options in a list
-# 	# This can be achieved by calling list(YourEnum)
-# 	# cls.all = classmethod(lambda cls2: [cls2[n] for n in list(cls2.__members__)])
-
-# 	cls.values: Callable[[], list[str]]  = classmethod(lambda cls2: [n.value for n in cls2])
-
-# 	# Make the class iterable
-# 	# cls.__iter__: Callable[[], Iterator[str]] = lambda self: iter(self.__members__.keys())
-
-# 	# Overwrite the __str__ method, to output only the name of the member
-# 	# cls.__str__: Callable[[], str] = lambda self: self.value
-# 	return cls
 
 # @members
 class DatasetNames(EnumWithHelpers):
@@ -106,6 +102,7 @@ class UncertaintyTechniques(EnumWithHelpers):
 class ConsistencyTechniques(EnumWithHelpers):
 	ONE_MINUS_UNCERTAINTY = "one_minus_uncertainty"
 	ONE_DIVIDED_BY_UNCERTAINTY = "one_divided_by_uncertainty"
+
 
 # @members
 class EvaluationMetricNames(EnumWithHelpers):
@@ -187,7 +184,8 @@ class Result2Type:
 	proposed        : ResultType
 	benchmark       : ResultType
 	weight          : WeightType
-	workers_strength: pd.DataFrame
+	workers_reliabilities: WorkerReliabilitiesSeriesType
+	workers_accruacies: pd.DataFrame
 	n_workers       : int
 	true_label      : dict[str, pd.DataFrame]
 
@@ -198,6 +196,17 @@ class ResultComparisonsType:
 	config                    : 'Settings'
 	weight_strength_relation  : pd.DataFrame
 
+
+
+WorkerID                      : TypeAlias = str  # Format: 'worker_0',               'worker_1',                                     etc.
+DataMode                      : TypeAlias = Literal['train', 'test']
+WorkerReliabilitiesSeriesType: TypeAlias  = pd.Series  # Index               = WorkerID,                                      values = float reliability scores
+WorkerLabelsDFType            : TypeAlias = pd.DataFrame  # DataFrames with columns = ['truth', WorkerID...]
+# UncertaintiesDFType           : TypeAlias = pd.DataFrame  # DataFrame with columns  = [config.technique.uncertainty_techniques ...], index  = [data.index]
+ClassifierPredsDFType         : TypeAlias = pd.DataFrame  # DataFrames with columns = ['simulation_0', ...]
+
+ConsistencyTechniqueType: TypeAlias = Literal[ *ConsistencyTechniques.values() ]
+# ConsistencyTechniqueType: TypeAlias = Type[ConsistencyTechniques]
 
 def main():
 	print(EvaluationMetricNames.AUC in ['AUC', 'ACC'])

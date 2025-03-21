@@ -1196,7 +1196,7 @@ class AIM1_3:
 		return params.Result2Type( proposed		 = results_proposed,
 							benchmark        = results_benchmarks,
 							weight           = weights,
-							workers_strength = workers_strength,
+							workers_reliabilities = workers_strength,
 							n_workers        = n_workers,
 							true_label       = true_labels )
 
@@ -1329,7 +1329,7 @@ class AIM1_3:
 						'feature_columns'               : self.feature_columns,
 						'use_parallelization_benchmarks': self.config.simulation.use_parallelization}
 
-			df = AIM1_3.core_measurements(**params_dict).workers_strength.set_index('workers_strength').sort_index()
+			df = AIM1_3.core_measurements(**params_dict).workers_reliabilities.set_index('workers_strength').sort_index()
 
 			if self.config.output.save:
 				if USE_HD5F_STORAGE:

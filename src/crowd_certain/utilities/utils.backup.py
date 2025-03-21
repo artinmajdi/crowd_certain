@@ -1726,7 +1726,7 @@ class CrowdCertainOrchestrator:
 		return params.Result2Type( proposed		 = results_proposed,
 							benchmark        = results_benchmarks,
 							weight           = weights,
-							workers_strength = workers_strength,
+							workers_reliabilities = workers_strength,
 							n_workers        = n_workers,
 							true_label       = true_labels )
 
