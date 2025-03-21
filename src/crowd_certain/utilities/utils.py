@@ -4,7 +4,7 @@ import multiprocessing
 import stat
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypedDict, Union
 
 # Third-party imports
 import numpy as np
@@ -13,6 +13,7 @@ import scipy
 from scipy.special import bdtrc
 from sklearn import ensemble as sk_ensemble
 from sklearn import metrics as sk_metrics
+from typing_extensions import Protocol
 
 # Local imports
 from crowd_certain.utilities.benchmarks import BenchmarkTechniques
@@ -144,73 +145,6 @@ class CrowdCertainOrchestrator:
 
 
 	@staticmethod
-	def get_accuracy(aggregated_labels, n_workers, delta_benchmark, truth):
-		"""
-		Calculates the accuracy of various crowdsourcing aggregation methods by comparing
-		their predictions against ground truth.
-
-		Parameters
-		----------
-		aggregated_labels : pd.DataFrame
-			DataFrame containing the aggregated labels from different aggregation methods.
-			Each column represents a different method, and each row represents an item.
-
-		n_workers : int
-			The number of workers used in the crowdsourcing task.
-
-		delta_benchmark : pd.DataFrame
-			Binary predicted labels from workers. Used to calculate majority voting accuracy.
-			Rows are items and columns are workers.
-
-		truth : pd.Series or array-like
-			Ground truth labels for each item.
-
-		Returns
-		-------
-		pd.DataFrame
-			DataFrame with accuracy scores for each aggregation method.
-			The index is the number of workers and columns are the different methods.
-
-		Notes
-		-----
-		The function evaluates accuracy for three groups of methods:
-		- params.ProposedTechniqueNames: Custom proposed techniques
-		- params.MainBenchmarks: Main benchmark methods
-		- params.OtherBenchmarkNames: Additional benchmark methods
-		- MV_Classifier: Majority voting accuracy
-
-		Accuracy is calculated by thresholding aggregated labels at 0.5 and
-		comparing with ground truth.
-		"""
-
-		accuracy = pd.DataFrame(index=[n_workers])
-		for methods in [params.ProposedTechniqueNames, params.MainBenchmarks, params.OtherBenchmarkNames]:
-			for m in methods:
-				accuracy[m] = ((aggregated_labels[m] >= 0.5) == truth).mean(axis=0)
-
-		accuracy['MV_Classifier'] = ( (delta_benchmark.mean(axis=1) >= 0.5) == truth).mean(axis=0)
-
-		return accuracy
-
-	@staticmethod
-	def get_AUC_ACC_F1(aggregated_labels: pd.Series, truth: pd.Series) -> pd.Series:
-
-		metrics = pd.Series(index=params.EvaluationMetricNames.values())
-
-		non_null = ~truth.isnull()
-		truth_notnull = truth[non_null].to_numpy()
-
-		if (len(truth_notnull) > 0) and (np.unique(truth_notnull).size == 2):
-
-			yhat = (aggregated_labels > 0.5).astype(int)[non_null]
-			metrics[params.EvaluationMetricNames.AUC.value] = sk_metrics.roc_auc_score( truth_notnull, yhat)
-			metrics[params.EvaluationMetricNames.ACC.value] = sk_metrics.accuracy_score(truth_notnull, yhat)
-			metrics[params.EvaluationMetricNames.F1.value ] = sk_metrics.f1_score( 	 truth_notnull, yhat)
-
-		return metrics
-
-
-	@staticmethod
 	def measuring_nu_and_confidence_score(self, weights: params.WeightType, preds_all, true_labels, use_parallelization_benchmarks: bool=False) -> Tuple[params.ResultType, params.ResultType]:
 		"""Calculates the confidence scores (nu) and evaluation metrics for proposed methods and benchmarks.
 
@@ -251,7 +185,7 @@ class CrowdCertainOrchestrator:
 				confidence_scores[cln] = CalculateConfidenceScores(delta=preds, w=weights.PROPOSED.T[cln], n_workers=self.n_workers ).calculate_confidence_scores()
 
 				# Measuring the metrics
-				metrics[cln] = CrowdCertainOrchestrator.get_AUC_ACC_F1(aggregated_labels=agg_labels[cln], truth=true_labels['test'].truth)
+				metrics[cln] = CalculateMetrics.get_AUC_ACC_F1(aggregated_labels=agg_labels[cln], truth=true_labels['test'].truth)
 
 			return params.ResultType(aggregated_labels=agg_labels, confidence_scores=confidence_scores, metrics=metrics)
 
@@ -296,7 +230,7 @@ class CrowdCertainOrchestrator:
 			v_benchmarks = pd.concat( [v_benchmarks, v_other_benchmarks], axis=1)
 
 			# Measuring the metrics
-			metrics_benchmarks = pd.DataFrame({cln: CrowdCertainOrchestrator.get_AUC_ACC_F1(aggregated_labels=v_benchmarks[cln], truth=true_labels['test'].truth) for cln in v_benchmarks.columns})
+			metrics_benchmarks = pd.DataFrame({cln: CalculateMetrics.get_AUC_ACC_F1(aggregated_labels=v_benchmarks[cln], truth=true_labels['test'].truth) for cln in v_benchmarks.columns})
 
 			return params.ResultType(aggregated_labels=v_benchmarks, confidence_scores=F_benchmarks, metrics=metrics_benchmarks)
 
@@ -321,29 +255,28 @@ class CrowdCertainOrchestrator:
 
 		# TODO: change the data['train'] and data['test'] to have two elements: truth and feature_columns. instead of passing the feature_columns everytime
 
-
 		aim1_3 = cls(data=data, config=config, feature_columns=feature_columns, n_workers=n_workers, seed=seed)
 
 		# calculating uncertainty and predicted probability values
-		preds_all, uncertainties_all, true_labels, workers_strength = ReliabilityCalculator.meauring_probs_uncertainties(config=config, n_workers=n_workers, seed=seed, data=data, feature_columns=feature_columns)
+		workers_reliabilities, workers_labels, uncertainties, classifiers_preds = ReliabilityCalculator.meauring_probs_uncertainties(config=config, n_workers=n_workers, seed=seed, data=data, feature_columns=feature_columns)
 
 		# TODO: edited until here
 
 		# Adding accuracy for each worker and adding it to workers_strength
-		workers_strength = CalculateMetrics.adding_accuracy_for_each_worker(n_workers=n_workers, preds=classifiers_preds, truth=workers_labels, workers_strength=workers_strength)
+		workers_reliabilities = CalculateMetrics.adding_accuracy_for_each_worker(n_workers=n_workers, preds=classifiers_preds, workers_labels=workers_labels, workers_assigned_reliabilities=workers_reliabilities)
 
 		# Calculating weights for proposed techniques and TAO & Sheng benchmarks
-		weights = CalculateWeights.get_weights( workers_labels    = preds_all['test']['simulation_0'],
-												preds 			  = preds_all['test']['mv'],
-												uncertainties 	  = uncertainties_all['test'],
-												noisy_true_labels = true_labels['test'].drop(columns=['truth']),
+		weights = CalculateWeights.get_weights( workers_labels    = classifiers_preds['test']['simulation_0'],
+												preds 			  = classifiers_preds['test']['mv'],
+												uncertainties 	  = uncertainties['test'],
+												noisy_true_labels = workers_labels['test'].drop(columns=['truth']),
 												n_workers		  = n_workers,
 												config			  = config)
 
 		# Calculating results for proposed techniques and benchmarks
 		results_proposed, results_benchmarks = aim1_3.measuring_nu_and_confidence_score(weights     = weights,
-																						preds_all   = preds_all,
-																						true_labels = true_labels,
+																						preds_all   = classifiers_preds,
+																						true_labels = workers_labels,
 																						use_parallelization_benchmarks = use_parallelization_benchmarks)
 
 		# merge workers_strength and weights
@@ -352,9 +285,9 @@ class CrowdCertainOrchestrator:
 		return params.Result2Type( proposed		 = results_proposed,
 							benchmark        = results_benchmarks,
 							weight           = weights,
-							workers_strength = workers_strength,
+							workers_strength = workers_reliabilities,
 							n_workers        = n_workers,
-							true_label       = true_labels )
+							true_label       = workers_labels )
 
 
 	@staticmethod
@@ -799,6 +732,7 @@ class CalculateWeights:
 		self.config = config
 		self.weights = None
 
+
 	@staticmethod
 	def measuring_Tao_weights_based_on_classifier_labels(delta: pd.DataFrame, noisy_true_labels: pd.DataFrame) -> pd.DataFrame:
 		"""
@@ -855,6 +789,7 @@ class CalculateWeights:
 		z = W_hat_Tao.mean(axis=1)
 
 		return W_hat_Tao.divide(z, axis=0)
+
 
 	@staticmethod
 	def measuring_Tao_weights_based_on_actual_labels(workers_labels: pd.DataFrame, noisy_true_labels: pd.DataFrame, n_workers: int) -> pd.DataFrame:
@@ -914,6 +849,7 @@ class CalculateWeights:
 		z = W_hat_Tao.mean(axis=1)
 
 		return W_hat_Tao.divide(z, axis=0) / n_workers
+
 
 	@staticmethod
 	def get_weights(config: Settings, workers_labels: pd.DataFrame, preds: pd.DataFrame, uncertainties: pd.DataFrame, noisy_true_labels: pd.DataFrame, n_workers: int) -> params.WeightType:
@@ -1009,6 +945,7 @@ class ReliabilityCalculator:
 		self.n_workers = n_workers
 		self.seed = seed
 
+
 	@staticmethod
 	def calculate_uncertainty(df: pd.DataFrame, config: 'Settings') -> pd.DataFrame:
 		"""
@@ -1097,6 +1034,7 @@ class ReliabilityCalculator:
 
 		return df_uncertainties
 
+
 	@staticmethod
 	def calculate_consistency(uncertainty: Union[pd.DataFrame, pd.Series, np.ndarray], config: 'Settings') -> pd.DataFrame:
 
@@ -1139,7 +1077,7 @@ class ReliabilityCalculator:
 
 
 	@staticmethod
-	def meauring_probs_uncertainties(config: 'Settings', n_workers: int, data: dict[str, pd.DataFrame], feature_columns: list[str], seed: int) -> tuple[ pd.DataFrame, Dict[str, pd.DataFrame] , Dict[str, Dict[str, pd.DataFrame]] , Dict[str, Dict[str, pd.DataFrame]] ]:
+	def meauring_probs_uncertainties(config: 'Settings', n_workers: int, data: dict[str, pd.DataFrame], feature_columns: list[str], seed: int) -> tuple[ pd.Series, Dict[str, pd.DataFrame], Dict[str, Dict[str, pd.DataFrame]], Dict[str, Dict[str, pd.DataFrame]] ]:
 
 		# Assigning strengths randomly to each worker
 		workers_reliabilities, workers_labels = WorkersGeneration.generate(config=config, data=data, n_workers=n_workers)
@@ -1151,8 +1089,6 @@ class ReliabilityCalculator:
 		uncertainties = ReliabilityCalculator.calculate_uncertainties_for_all_workers(classifiers_preds_all_workers=classifiers_preds, config=config)
 
 		return workers_reliabilities, workers_labels, uncertainties, classifiers_preds
-
-
 
 
 	@staticmethod
@@ -1250,8 +1186,9 @@ class CalculateMetrics:
 	def __init__(self, config: 'Settings'):
 		self.config = config
 
+
 	@staticmethod
-	def adding_accuracy_for_each_worker(n_workers: int, preds: pd.DataFrame, truth: pd.DataFrame, workers_strength: pd.DataFrame):
+	def adding_accuracy_for_each_worker(n_workers: int, preds: pd.DataFrame, workers_labels: pd.DataFrame, workers_assigned_reliabilities: pd.Series) -> pd.DataFrame:
 		"""
 		Calculate and add accuracy measures for each worker in the crowd-sourcing task.
 
@@ -1266,40 +1203,143 @@ class CalculateMetrics:
 		Note:
 			- This is a non-local function that modifies the outer scope variables: workers_strength, preds, and truth
 		"""
-
-		workers_strength['accuracy-test-classifier'] = 0.0
-		workers_strength['accuracy-test'] = 0.0
+		reliabilities = workers_assigned_reliabilities.to_frame(name='reliability')
+		reliabilities['accuracy-test-classifier'] = 0.0
+		reliabilities['accuracy-test'] = 0.0
 
 		for i in range(n_workers):
-			LB = f'worker_{i}'
+			wsi = f'worker_{i}'
 
 			# accuracy of classifier in simulation_0
-			workers_strength.loc[LB, 'accuracy-test-classifier'] = ( preds['test']['simulation_0'][LB] == truth['test'].truth).mean()
+			reliabilities.loc[wsi, 'accuracy-test-classifier'] = ( preds['test']['simulation_0'][wsi] == workers_labels['test'].truth).mean()
 
 			# accuracy of noisy true labels for each worker
-			workers_strength.loc[LB, 'accuracy-test'] 		     = ( truth['test'][LB] == truth['test'].truth).mean()
+			reliabilities.loc[wsi, 'accuracy-test'] 		     = ( workers_labels['test'][wsi] == workers_labels['test'].truth).mean()
 
-		return workers_strength
+		return reliabilities
+
+
+	@staticmethod
+	def get_accuracy(aggregated_labels: pd.DataFrame, n_workers, delta_benchmark, truth):
+		"""
+		Calculates the accuracy of various crowdsourcing aggregation methods by comparing
+		their predictions against ground truth.
+
+		Parameters
+		----------
+		aggregated_labels : pd.DataFrame
+			DataFrame containing the aggregated labels from different aggregation methods.
+			Each column represents a different method, and each row represents an item.
+
+		n_workers : int
+			The number of workers used in the crowdsourcing task.
+
+		delta_benchmark : pd.DataFrame
+			Binary predicted labels from workers. Used to calculate majority voting accuracy.
+			Rows are items and columns are workers.
+
+		truth : pd.Series or array-like
+			Ground truth labels for each item.
+
+		Returns
+		-------
+		pd.DataFrame
+			DataFrame with accuracy scores for each aggregation method.
+			The index is the number of workers and columns are the different methods.
+
+		Notes
+		-----
+		The function evaluates accuracy for three groups of methods:
+		- params.ProposedTechniqueNames: Custom proposed techniques
+		- params.MainBenchmarks: Main benchmark methods
+		- params.OtherBenchmarkNames: Additional benchmark methods
+		- MV_Classifier: Majority voting accuracy
+
+		Accuracy is calculated by thresholding aggregated labels at 0.5 and
+		comparing with ground truth.
+		"""
+
+		accuracy = pd.DataFrame(index=[n_workers])
+		for methods in [params.ProposedTechniqueNames, params.MainBenchmarks, params.OtherBenchmarkNames]:
+			for m in methods:
+				accuracy[m] = ((aggregated_labels[m] >= 0.5) == truth).mean(axis=0)
+
+		accuracy['MV_Classifier'] = ( (delta_benchmark.mean(axis=1) >= 0.5) == truth).mean(axis=0)
+
+		return accuracy
+
+
+	@staticmethod
+	def get_AUC_ACC_F1(aggregated_labels: pd.Series, truth: pd.Series) -> pd.Series:
+
+		metrics = pd.Series(index=params.EvaluationMetricNames.values())
+
+		non_null = ~truth.isnull()
+		truth_notnull = truth[non_null].to_numpy()
+
+		if (len(truth_notnull) > 0) and (np.unique(truth_notnull).size == 2):
+
+			yhat = (aggregated_labels > 0.5).astype(int)[non_null]
+			metrics[params.EvaluationMetricNames.AUC.value] = sk_metrics.roc_auc_score( truth_notnull, yhat)
+			metrics[params.EvaluationMetricNames.ACC.value] = sk_metrics.accuracy_score(truth_notnull, yhat)
+			metrics[params.EvaluationMetricNames.F1.value ] = sk_metrics.f1_score( 	 truth_notnull, yhat)
+
+		return metrics
 
 
 class WorkersGeneration:
+	"""
+	A class for generating simulated worker labels and reliabilities for crowdsourcing tasks.
+
+	This class handles the creation of synthetic worker annotations by:
+	1. Assigning random reliability scores to workers
+	2. Generating noisy label sets based on those reliabilities
+	3. Managing the worker label generation process
+
+	Attributes:
+		config (Settings)                         : Configuration object containing simulation parameters
+		n_workers (int)                           : Number of workers to simulate
+		workers_assigned_reliabilities (pd.Series): Worker reliability scores indexed by worker IDs
+		workers_labels (Dict[Literal['train', 'test'], pd.DataFrame])  : Worker labels for train and test sets
+
+	Methods:
+		assign_reliabilities_to_each_worker() : Assigns random reliability scores to workers
+		create_worker_label_set(data)        : Creates noisy label sets based on worker reliabilities
+		generate(config, data, n_workers)    : Class method to generate worker labels and reliabilities
+	"""
+
+	# Type definitions for better code navigation
+	WorkerID = str  # Format: 'worker_0', 'worker_1', etc.
+	DataMode = Literal['train', 'test']
+	InputDataDict = Dict[DataMode, pd.DataFrame]  # DataFrame with ground truth in 'true' column
 
 	def __init__(self, config: 'Settings', n_workers: int):
 		self.config = config
-		self.n_workers= n_workers
-		self.workers_assigned_reliabilities: pd.Series = None
-		self.workers_labels: Dict[str, pd.DataFrame] = None
+		self.n_workers = n_workers
+		self.workers_assigned_reliabilities: pd.Series[float] = None  # Index=WorkerID, values=reliability scores
+		self.workers_labels: Dict[Literal['train', 'test'], pd.DataFrame] = None  # DataFrame with columns=['truth', 'worker_0', ...]
 
 	def assign_reliabilities_to_each_worker(self) -> 'WorkersGeneration':
 		"""
-		Assigns reliability values to each worker in the simulation.
+		Assigns random reliability scores to each worker in the crowdsourcing task.
 
-		This method generates random reliability values for each worker within the range specified in the
-		configuration (low_dis to high_dis). The reliability values are then assigned to each worker and
-		stored in a pandas Series indexed by worker IDs.
+		This method generates random reliability scores for each worker by sampling from a uniform
+		distribution between the low_dis and high_dis values specified in the configuration.
+		These scores represent each worker's reliability or accuracy in providing labels.
 
-		Returns:
-			pd.Series: A pandas Series containing the reliability values for each worker.
+		Returns
+		-------
+		WorkersGeneration
+			Returns self for method chaining.
+
+		Notes
+		-----
+		The reliability scores are stored in self.workers_assigned_reliabilities as a pandas Series
+		indexed by worker IDs ('worker_0', 'worker_1', etc.).
+
+		The reliability range is defined by:
+		- config.simulation.low_dis: Lower bound of worker reliability
+		- config.simulation.high_dis: Upper bound of worker reliability
 		"""
 
 		# Generating a random number between low_dis and high_dis for each worker
@@ -1310,7 +1350,40 @@ class WorkersGeneration:
 
 		return self
 
-	def create_worker_label_set(self, data: Dict[str, pd.DataFrame]) -> 'WorkersGeneration':
+	def create_worker_label_set(self, data: Dict[Literal['train', 'test'], pd.DataFrame]) -> 'WorkersGeneration':
+		"""
+		Creates simulated worker label sets based on ground truth and worker reliability.
+
+		This method generates synthetic worker annotations by introducing controlled noise
+		to the ground truth labels based on each worker's assigned reliability. The process
+		simulates how human annotators with varying skill levels would label the same data.
+
+		data : Dict[Literal['train', 'test'], pd.DataFrame]
+			Dictionary containing training and testing DataFrames with ground truth labels
+			in a column named 'true'. Expected keys are 'train' and 'test'.
+
+		WorkersGeneration
+			Returns self for method chaining.
+
+		The method:
+		1. Takes each sample's ground truth and creates noisy versions based on worker reliability
+		2. Stores the generated worker labels in self.workers_labels dictionary
+		3. Lower worker reliability results in more label errors
+
+		The resulting self.workers_labels is a dictionary with keys 'train' and 'test',
+		where each value is a DataFrame containing the ground truth and all workers' labels.
+
+		Notes
+		-----
+		The output structure represents worker labels in the following format:
+		{
+			'train' | 'test': pd.DataFrame(
+				columns = ['truth', worker_name1, worker_name2, ...],
+				index   = data.index,
+				values  = worker_labels
+			)
+		}
+		"""
 
 		def getting_noisy_manual_labels_for_each_worker(truth_array: np.ndarray, worker_reliability: float) -> np.ndarray:
 			"""
@@ -1360,6 +1433,23 @@ class WorkersGeneration:
 			return worker_truth
 
 		def do_generate(mdata: pd.DataFrame) -> pd.DataFrame:
+			"""
+			Generate workers' labels based on ground truth and worker reliability.
+
+			This function creates a DataFrame with the ground truth and noisy labels for each worker,
+			based on the worker's reliability.
+
+			Parameters
+			----------
+			mdata : pd.DataFrame
+				Input DataFrame containing ground truth labels in the 'true' column.
+
+			Returns
+			-------
+			pd.DataFrame
+				DataFrame with columns for the 'truth' and each worker's labels.
+				The index is preserved from the input DataFrame.
+			"""
 			workers_labels = pd.DataFrame({'truth': mdata.true}, index=mdata.index)
 
 			for wsi, worker_reliability in self.workers_assigned_reliabilities.items():
@@ -1367,13 +1457,40 @@ class WorkersGeneration:
 
 			return workers_labels
 
-		self.workers_labels: Dict[str, pd.DataFrame] = {mode: do_generate(mdata=data[mode]) for mode in ['train', 'test']}
+		self.workers_labels = {mode: do_generate(mdata=data[mode]) for mode in ['train', 'test']}
 
 		return self
 
 	@classmethod
-	def generate(cls, config: 'Settings', data: Dict[str, pd.DataFrame], n_workers: int) -> Tuple[pd.Series, Dict[str, pd.DataFrame]]:
+	def generate(cls, config: 'Settings', data: Dict[Literal['train', 'test'], pd.DataFrame], n_workers: int) -> Tuple[pd.Series, Dict[Literal['train', 'test'], pd.DataFrame]]:
+		"""
+		Generate simulated worker labels and reliabilities for crowdsourcing tasks.
 
+		This class method creates a set of synthetic worker annotations by:
+		1. Assigning random reliability scores to each worker
+		2. Creating noisy label sets based on those reliabilities
+
+		Parameters
+		----------
+		config : Settings
+			Configuration object containing simulation parameters
+		data : Dict[Literal['train', 'test'], pd.DataFrame]
+			Dictionary containing training and test data with ground truth labels
+		n_workers : int
+			Number of workers to simulate
+
+		Returns
+		-------
+		Tuple[pd.Series, Dict[Literal['train', 'test'], pd.DataFrame]]
+			- pd.Series: Worker reliability scores indexed by worker IDs
+			- Dict[Literal['train', 'test'], pd.DataFrame]: Worker labels for train and test sets
+				Format: {'train'|'test': DataFrame(columns=['truth', 'worker_0', 'worker_1', ...])}
+
+		Notes
+		-----
+		Worker reliabilities are randomly sampled from the range specified in config.
+		Labels are generated by introducing controlled noise based on worker reliability.
+		"""
 		WG = cls(config=config, n_workers=n_workers)
 		WG.assign_reliabilities_to_each_worker()
 		WG.create_worker_label_set(data=data)
